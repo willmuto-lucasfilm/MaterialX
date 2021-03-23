@@ -5,6 +5,8 @@
 
 #include <MaterialXCore/Look.h>
 
+#include <MaterialXCore/Document.h>
+
 namespace MaterialX
 {
 
@@ -16,19 +18,33 @@ const string Visibility::VIEWER_COLLECTION_ATTRIBUTE = "viewercollection";
 const string Visibility::VISIBILITY_TYPE_ATTRIBUTE = "vistype";
 const string Visibility::VISIBLE_ATTRIBUTE = "visible";
 
-//
-// MaterialAssign methods
-//
+const string LookGroup::LOOKS_ATTRIBUTE = "looks";
+const string LookGroup::ACTIVE_ATTRIBUTE = "active";
 
-vector<VariantAssignPtr> MaterialAssign::getActiveVariantAssigns() const
+vector<MaterialAssignPtr> getGeometryBindings(const NodePtr& materialNode, const string& geom)
 {
-    vector<VariantAssignPtr> activeAssigns;
-    for (ConstElementPtr elem : traverseInheritance())
+    vector<MaterialAssignPtr> matAssigns;
+    for (LookPtr look : materialNode->getDocument()->getLooks())
     {
-        vector<VariantAssignPtr> assigns = elem->asA<MaterialAssign>()->getVariantAssigns();
-        activeAssigns.insert(activeAssigns.end(), assigns.begin(), assigns.end());
+        for (MaterialAssignPtr matAssign : look->getMaterialAssigns())
+        {
+            if (matAssign->getReferencedMaterial() == materialNode)
+            {
+                if (geomStringsMatch(geom, matAssign->getActiveGeom()))
+                {
+                    matAssigns.push_back(matAssign);
+                    continue;
+                }
+                CollectionPtr coll = matAssign->getCollection();
+                if (coll && coll->matchesGeomString(geom))
+                {
+                    matAssigns.push_back(matAssign);
+                    continue;
+                }
+            }
+        }
     }
-    return activeAssigns;
+    return matAssigns;
 }
 
 //
@@ -104,9 +120,20 @@ vector<VisibilityPtr> Look::getActiveVisibilities() const
 // MaterialAssign methods
 //
 
-MaterialPtr MaterialAssign::getReferencedMaterial() const
+NodePtr MaterialAssign::getReferencedMaterial() const
 {
-    return resolveRootNameReference<Material>(getMaterial());   
+    return resolveRootNameReference<Node>(getMaterial());
+}
+
+vector<VariantAssignPtr> MaterialAssign::getActiveVariantAssigns() const
+{
+    vector<VariantAssignPtr> activeAssigns;
+    for (ConstElementPtr elem : traverseInheritance())
+    {
+        vector<VariantAssignPtr> assigns = elem->asA<MaterialAssign>()->getVariantAssigns();
+        activeAssigns.insert(activeAssigns.end(), assigns.begin(), assigns.end());
+    }
+    return activeAssigns;
 }
 
 } // namespace MaterialX

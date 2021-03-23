@@ -32,10 +32,7 @@ class ShaderGenerator
     /// Destructor
     virtual ~ShaderGenerator() { }
 
-    /// Return a unique identifier for the language used by this generator
-    virtual const string& getLanguage() const = 0;
-
-    /// Return a unique identifier for the target this generator is for
+    /// Return the name of the target this generator is for.
     virtual const string& getTarget() const = 0;
 
     /// Generate a shader starting from the given element, translating
@@ -147,20 +144,40 @@ class ShaderGenerator
         return _colorManagementSystem;
     }
 
+    /// Sets the unit system
+    void setUnitSystem(UnitSystemPtr unitSystem)
+    {
+        _unitSystem = unitSystem;
+    }
+
+    /// Returns the unit system
+    UnitSystemPtr getUnitSystem() const
+    {
+        return _unitSystem;
+    }
+
     /// Return a registered shader node implementation given an implementation element.
     /// The element must be an Implementation or a NodeGraph acting as implementation.
     /// If no registered implementation is found a 'default' implementation instance
     /// will be returned, as defined by the createDefaultImplementation method.
     ShaderNodeImplPtr getImplementation(const InterfaceElement& element, GenContext& context) const;
 
-    /// Given an input specification attempt to remap this to an enumeration which is accepted by
-    /// the shader generator. The enumeration may be converted to a different type than the input.
-    /// @param input Nodedef input potentially holding an enum definition.
-    /// @param value The value string to remap.
-    /// @param result Enumeration type and value (returned).
-    /// @return Return true if the remapping was successful.
-    virtual bool remapEnumeration(const ValueElement& input, const string& value,
-                                  std::pair<const TypeDesc*, ValuePtr>& result) const;
+    /// Return the map of token substitutions used by the generator.
+    const StringMap& getTokenSubstitutions() const
+    {
+        return _tokenSubstitutions;
+    }
+
+    /// Register metadata that should be exported to the generated shaders.
+    /// Supported metadata includes standard UI attributes like "uiname", "uifolder", 
+    /// "uimin", "uimax", etc. 
+    /// But it is also extendable by defining custom attributes using AttributeDefs.
+    /// Any AttributeDef in the given document with exportable="true" will be 
+    /// exported as shader metadata when found on nodes during shader generation.
+    /// Derived shader generators may override this method to change the registration.
+    /// Applications must explicitly call this method before shader generation to enable
+    /// export of metadata.
+    virtual void registerShaderMetadata(const DocumentPtr& doc, GenContext& context) const;
 
   protected:
     /// Protected constructor
@@ -179,13 +196,30 @@ class ShaderGenerator
     /// Derived classes can override this to use custom compound implementations.
     virtual ShaderNodeImplPtr createCompoundImplementation(const NodeGraph& impl) const;
 
+    /// Method called on all created shader graphs. By default it does nothing,
+    /// but shader generators can override this to perform custom edits on the graph
+    /// before shader generation starts.
+    virtual void finalizeShaderGraph(ShaderGraph& graph);
+
+    /// Set function name for a stage.
+    void setFunctionName(const string& functionName, ShaderStage& stage) const
+    {
+        stage.setFunctionName(functionName);
+    }
+
+    /// Replace tokens with identifiers according to the given substitutions map.
+    void replaceTokens(const StringMap& substitutions, ShaderStage& stage) const;
+
   protected:
-    static const string SEMICOLON;
-    static const string COMMA;
+    static const string T_FILE_TRANSFORM_UV;
 
     SyntaxPtr _syntax;
     Factory<ShaderNodeImpl> _implFactory;
     ColorManagementSystemPtr _colorManagementSystem;
+    UnitSystemPtr _unitSystem;
+    mutable StringMap _tokenSubstitutions;
+
+    friend ShaderGraph;
 };
 
 } // namespace MaterialX

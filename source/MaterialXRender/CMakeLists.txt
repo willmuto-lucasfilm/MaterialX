@@ -1,68 +1,42 @@
 include_directories(
     ${EXTERNAL_INCLUDE_DIRS}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../
-)
+    ${CMAKE_CURRENT_SOURCE_DIR}/../)
 
 file(GLOB_RECURSE materialx_source "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
-file(GLOB_RECURSE materialx_header "${CMAKE_CURRENT_SOURCE_DIR}/*.h")
+file(GLOB_RECURSE materialx_headers "${CMAKE_CURRENT_SOURCE_DIR}/*.h*")
 
 if(NOT MATERIALX_BUILD_OIIO)
-    list(REMOVE_ITEM materialx_source "${CMAKE_CURRENT_SOURCE_DIR}/OiioImageLoader.h")
     list(REMOVE_ITEM materialx_source "${CMAKE_CURRENT_SOURCE_DIR}/OiioImageLoader.cpp")
 endif()
 
-function(assign_source_group prefix)
-    foreach(_source IN ITEMS ${ARGN})
-        if (IS_ABSOLUTE "${_source}")
-            file(RELATIVE_PATH _source_rel "${CMAKE_CURRENT_SOURCE_DIR}" "${_source}")
-        else()
-            set(_source_rel "${_source}")
-        endif()
-        get_filename_component(_source_path "${_source_rel}" PATH)
-        string(REPLACE "/" "\\" _source_path_msvc "${_source_path}")
-        source_group("${prefix}\\${_source_path_msvc}" FILES "${_source}")
-    endforeach()
-endfunction(assign_source_group)
-
-assign_source_group("Header Files" ${materialx_header})
 assign_source_group("Source Files" ${materialx_source})
+assign_source_group("Header Files" ${materialx_headers})
 
-add_library(MaterialXRender STATIC
-    ${materialx_source}
-    ${materialx_header}
-)
+if(UNIX)
+    add_compile_options(-Wno-unused-function)
+endif()
 
-if(MSVC)
-    target_link_libraries(
-        MaterialXRender
-        MaterialXGenShader
-        MaterialXCore
-        Opengl32
-        ${CMAKE_DL_LIBS})
-elseif (APPLE)
-    target_link_libraries(
-        MaterialXRender
-        MaterialXGenShader
-        MaterialXCore
-        ${CMAKE_DL_LIBS}
-)
-elseif (UNIX AND NOT APPLE)
-    target_link_libraries(
-        MaterialXRender
-        MaterialXGenShader
-        MaterialXCore
-        ${CMAKE_DL_LIBS}
-    )
-endif(MSVC)
+add_library(MaterialXRender ${materialx_source} ${materialx_headers})
+
+target_link_libraries(
+    MaterialXRender
+    MaterialXGenShader
+    ${CMAKE_DL_LIBS})
 
 if(MATERIALX_BUILD_OIIO)
-	set(OPENIMAGEIO_ROOT_DIR ${MATERIALX_OIIO_DIR})
-	list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/External/OpenImageIO")
-	find_package(OpenImageIO REQUIRED)
-	if(OPENIMAGEIO_FOUND)
-		include_directories(${OPENIMAGEIO_INCLUDE_DIR})
-		target_link_libraries(MaterialXRender ${OPENIMAGEIO_LIBRARIES})
-	endif()
+    set(OPENIMAGEIO_ROOT_DIR ${MATERIALX_OIIO_DIR})
+    list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/External/OpenImageIO")
+    find_package(OpenImageIO REQUIRED)
+    if(OPENIMAGEIO_FOUND)
+        include_directories(${OPENIMAGEIO_INCLUDE_DIR})
+        target_link_libraries(MaterialXRender ${OPENIMAGEIO_LIBRARIES})
+        # Also needed by MaterialXTest:
+        set(OPENIMAGEIO_FOUND "${OPENIMAGEIO_FOUND}" PARENT_SCOPE)
+        set(OPENIMAGEIO_INCLUDE_DIR "${OPENIMAGEIO_INCLUDE_DIR}" PARENT_SCOPE)
+        set(OPENIMAGEIO_LIBRARIES "${OPENIMAGEIO_LIBRARIES}" PARENT_SCOPE)
+        set(OPENIMAGEIO_LIBRARY_DIRS "${OPENIMAGEIO_LIBRARY_DIRS}" PARENT_SCOPE)
+        set(OPENIMAGEIO_ROOT_DIR "${OPENIMAGEIO_ROOT_DIR}" PARENT_SCOPE)
+    endif()
 endif()
 
 set_target_properties(
@@ -74,12 +48,13 @@ set_target_properties(
     SOVERSION "${MATERIALX_MAJOR_VERSION}")
 
 install(TARGETS MaterialXRender
-    DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/
-)
+    EXPORT MaterialX
+    ARCHIVE DESTINATION ${MATERIALX_INSTALL_LIB_PATH}
+    LIBRARY DESTINATION ${MATERIALX_INSTALL_LIB_PATH})
 
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/"
-    DESTINATION ${CMAKE_INSTALL_PREFIX}/include/MaterialXRender/ MESSAGE_NEVER
+    DESTINATION ${CMAKE_INSTALL_PREFIX}/${MATERIALX_INSTALL_INCLUDE_PATH}/MaterialXRender/ MESSAGE_NEVER
     FILES_MATCHING PATTERN "*.h*")
 
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/MaterialXRender.pdb"
-        DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/" OPTIONAL)
+    DESTINATION "${CMAKE_INSTALL_PREFIX}/${MATERIALX_INSTALL_LIB_PATH}/" OPTIONAL)

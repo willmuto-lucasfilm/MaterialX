@@ -7,13 +7,15 @@
 
 namespace py = pybind11;
 
-void bindPyXmlIo(py::module& mod);
 void bindPyFile(py::module& mod);
+void bindPyXmlIo(py::module& mod);
+void bindPyUtil(py::module& mod);
 
 PYBIND11_MODULE(PyMaterialXFormat, mod)
 {
     mod.doc() = "Module containing Python bindings for the MaterialXFormat library";
 
-    bindPyXmlIo(mod);
     bindPyFile(mod);
+    bindPyXmlIo(mod);
+    bindPyUtil(mod);
 }

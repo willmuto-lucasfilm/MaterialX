@@ -19,6 +19,7 @@ namespace MaterialX
 {
 
 class Look;
+class LookGroup;
 class LookInherit;
 class MaterialAssign;
 class Visibility;
@@ -27,6 +28,11 @@ class Visibility;
 using LookPtr = shared_ptr<Look>;
 /// A shared pointer to a const Look
 using ConstLookPtr = shared_ptr<const Look>;
+
+/// A shared pointer to a LookGroup
+using LookGroupPtr = shared_ptr<LookGroup>;
+/// A shared pointer to a const LookGroup
+using ConstLookGroupPtr = shared_ptr<const LookGroup>;
 
 /// A shared pointer to a MaterialAssign
 using MaterialAssignPtr = shared_ptr<MaterialAssign>;
@@ -49,7 +55,6 @@ class Look : public Element
     }
     virtual ~Look() { }
 
-    /// @}
     /// @name MaterialAssign Elements
     /// @{
 
@@ -58,7 +63,7 @@ class Look : public Element
     ///     If no name is specified, then a unique name will automatically be
     ///     generated.
     /// @param material An optional material string, which should match the
-    ///     name of the Material element to be assigned.
+    ///     name of the material node to be assigned.
     /// @return A shared pointer to the new MaterialAssign.
     MaterialAssignPtr addMaterialAssign(const string& name = EMPTY_STRING,
                                         const string& material = EMPTY_STRING);
@@ -235,6 +240,47 @@ class Look : public Element
     static const string CATEGORY;
 };
 
+/// @class LookGroup
+/// A look group element within a Document.
+class LookGroup : public Element
+{
+  public:
+    LookGroup(ElementPtr parent, const string& name) :
+        Element(parent, CATEGORY, name)
+    {
+    }
+    virtual ~LookGroup() { }
+
+    /// Set comma-separated list of looks.
+    void setLooks(const string& looks)
+    {
+        setAttribute(LOOKS_ATTRIBUTE, looks);
+    }
+
+    /// Get comma-separated list of looks.
+    const string& getLooks() const
+    {
+        return getAttribute(LOOKS_ATTRIBUTE);
+    }
+
+    /// Set the active look.
+    void setActiveLook(const string& look)
+    {
+        setAttribute(ACTIVE_ATTRIBUTE, look);
+    }
+
+    /// Return the active look, if any.
+    const string& getActiveLook() const
+    {
+        return getAttribute(ACTIVE_ATTRIBUTE);
+    }
+
+  public:
+    static const string CATEGORY;
+    static const string LOOKS_ATTRIBUTE;
+    static const string ACTIVE_ATTRIBUTE;
+};
+
 /// @class MaterialAssign
 /// A material assignment element within a Look.
 class MaterialAssign : public GeomElement
@@ -287,8 +333,8 @@ class MaterialAssign : public GeomElement
     /// @name Material References
     /// @{
 
-    /// Return the Material, if any, referenced by the MaterialAssign.
-    MaterialPtr getReferencedMaterial() const;
+    /// Return the material node, if any, referenced by the MaterialAssign.
+    NodePtr getReferencedMaterial() const;
 
     /// @}
     /// @name VariantAssign Elements
@@ -438,6 +484,15 @@ class Visibility : public GeomElement
     static const string VISIBILITY_TYPE_ATTRIBUTE;
     static const string VISIBLE_ATTRIBUTE;
 };
+
+/// Return a vector of all MaterialAssign elements that bind this material node
+/// to the given geometry string
+/// @param materialNode Node to examine
+/// @param geom The geometry for which material bindings should be returned.
+///             By default, this argument is the universal geometry string "/",
+///             and all material bindings are returned.
+/// @return Vector of MaterialAssign elements
+vector<MaterialAssignPtr> getGeometryBindings(const NodePtr& materialNode, const string& geom);
 
 } // namespace MaterialX
 

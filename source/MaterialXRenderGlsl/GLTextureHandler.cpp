@@ -3,276 +3,152 @@
 // All rights reserved.  See LICENSE.txt for license.
 //
 
-#include <MaterialXCore/Types.h>
 #include <MaterialXRenderGlsl/GLTextureHandler.h>
+
 #include <MaterialXRenderGlsl/GlslProgram.h>
 #include <MaterialXRenderGlsl/External/GLew/glew.h>
+
+#include <MaterialXRender/ShaderRenderer.h>
+
+#include <iostream>
 
 namespace MaterialX
 {
 
 GLTextureHandler::GLTextureHandler(ImageLoaderPtr imageLoader) :
-    ImageHandler(imageLoader),
-    _maxImageUnits(-1)
-{
-    _restrictions.supportedBaseTypes = { ImageDesc::BASETYPE_HALF, ImageDesc::BASETYPE_FLOAT, ImageDesc::BASETYPE_UINT8 };
-}
-
-bool GLTextureHandler::createColorImage(const Color4& color,
-                                        ImageDesc& imageDesc)
+    ImageHandler(imageLoader)
 {
     if (!glActiveTexture)
     {
         glewInit();
     }
 
-    ImageHandler::createColorImage(color, imageDesc);
-    if ((imageDesc.width * imageDesc.height > 0) && imageDesc.resourceBuffer)
-    {
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        glGenTextures(1, &imageDesc.resourceId);
-
-        int textureUnit = getBoundTextureLocation(imageDesc.resourceId);
-        if (textureUnit < 0) return false;
-        glActiveTexture(GL_TEXTURE0 + textureUnit);
-        glBindTexture(GL_TEXTURE_2D, imageDesc.resourceId);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, imageDesc.width, imageDesc.height, 0, GL_RGBA, GL_FLOAT, imageDesc.resourceBuffer);
-        glGenerateMipmap(GL_TEXTURE_2D);
-        glBindTexture(GL_TEXTURE_2D, 0);
-        return true;
-    }
-    return false;
+    int maxTextureUnits;
+    glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &maxTextureUnits);
+    _boundTextureLocations.resize(maxTextureUnits, GlslProgram::UNDEFINED_OPENGL_RESOURCE_ID);
 }
 
-bool GLTextureHandler::acquireImage(const FilePath& filePath,
-                                    ImageDesc& imageDesc,
-                                    bool generateMipMaps,
-                                    const Color4* fallbackColor)
+bool GLTextureHandler::bindImage(ImagePtr image, const ImageSamplingProperties& samplingProperties)
 {
-    if (_boundTextureLocations.empty())
+    // Create renderer resources if needed.
+    if (image->getResourceId() == GlslProgram::UNDEFINED_OPENGL_RESOURCE_ID)
     {
-        int maxTextureUnits;
-        glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &maxTextureUnits);
-        if (maxTextureUnits <= 0)
-        {
-            ShaderValidationErrorList errors;
-            errors.push_back("No texture units available");
-            throw ExceptionShaderValidationError("OpenGL context error.", errors);
-        }
-        _boundTextureLocations.resize(maxTextureUnits, MaterialX::GlslProgram::UNDEFINED_OPENGL_RESOURCE_ID);
-    }
-
-    if (!glActiveTexture)
-    {
-        glewInit();
-    }
-
-    // Check to see if we have already loaded in the texture.
-    // If so, reuse the existing texture id
-    const ImageDesc* cachedDesc = getCachedImage(filePath);
-    if (cachedDesc)
-    {
-        imageDesc = *cachedDesc;
-        return true;
-    }
-
-    bool textureLoaded = false;
-    if (ImageHandler::acquireImage(filePath, imageDesc, generateMipMaps, fallbackColor))
-    {
-        imageDesc.resourceId = MaterialX::GlslProgram::UNDEFINED_OPENGL_RESOURCE_ID;
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        glGenTextures(1, &imageDesc.resourceId);
-
-        int textureUnit = getNextAvailableTextureLocation();
-        if (textureUnit < 0) return false;
-        _boundTextureLocations[textureUnit] = imageDesc.resourceId;
-        glActiveTexture(GL_TEXTURE0 + textureUnit);
-        glBindTexture(GL_TEXTURE_2D, imageDesc.resourceId);
-
-        GLint internalFormat = GL_RGBA;
-        GLenum type = GL_UNSIGNED_BYTE;
-
-        if (imageDesc.baseType == ImageDesc::BASETYPE_FLOAT)
-        {
-            internalFormat = GL_RGBA32F;
-            type = GL_FLOAT;
-        }
-        else if (imageDesc.baseType == ImageDesc::BASETYPE_HALF)
-        {
-            internalFormat = GL_RGBA16F;
-            type = GL_HALF_FLOAT;
-        }
-
-        GLint format = GL_RGBA;
-        switch (imageDesc.channelCount)
-        {
-        case 3:
-        {
-            format = GL_RGB;
-            // Map {RGB} to {RGB, 1} at shader access time
-            GLint swizzleMaskRGB[] = { GL_RED, GL_GREEN, GL_BLUE, GL_ONE };
-            glTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_RGBA, swizzleMaskRGB);
-            break;
-        }
-        case 2:
-        {
-            format = GL_RG;
-            // Map {red, green} to {red, alpha} at shader access time
-            GLint swizzleMaskRG[] = { GL_RED, GL_RED, GL_RED, GL_GREEN };
-            glTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_RGBA, swizzleMaskRG);
-            break;
-        }
-        case 1:
-        {
-            format = GL_RED;
-            // Map { red } to {red, green, blue, 1} at shader access time
-            GLint swizzleMaskR[] = { GL_RED, GL_RED, GL_RED, GL_ONE };
-            glTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_RGBA, swizzleMaskR);
-            break;
-        }
-        default:
-            break;
-        }
-
-        glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, imageDesc.width, imageDesc.height,
-            0, format, type, imageDesc.resourceBuffer);
-
-        if (generateMipMaps)
-        {
-            glGenerateMipmap(GL_TEXTURE_2D);
-        }
-        glBindTexture(GL_TEXTURE_2D, 0);
-
-        imageDesc.freeResourceBuffer();
-        cacheImage(filePath, imageDesc);
-        textureLoaded = true;
-    }
-
-    // Create a fallback texture if failed to load
-    if (!textureLoaded && fallbackColor)
-    {
-        ImageDesc desc;
-        desc.channelCount = 4;
-        desc.width = 1;
-        desc.height = 1;
-        desc.baseType = ImageDesc::BASETYPE_FLOAT;
-        createColorImage(*fallbackColor, desc);
-        desc.freeResourceBuffer();
-        cacheImage(filePath, desc);
-    }
-
-    return textureLoaded;
-}
-
-
-bool GLTextureHandler::bindImage(const string &identifier, const ImageSamplingProperties& samplingProperties)
-{
-    const ImageDesc* cachedDesc = getCachedImage(identifier);
-    if (cachedDesc)
-    {
-        if (!glActiveTexture)
-        {
-            glewInit();
-        }
-
-        unsigned int resourceId = cachedDesc->resourceId;
-
-        // Bind a texture to the next available slot
-        if (_maxImageUnits < 0)
-        {
-            glGetIntegerv(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, &_maxImageUnits);
-        }
-        if (resourceId == MaterialX::GlslProgram::UNDEFINED_OPENGL_RESOURCE_ID ||
-            resourceId == static_cast<unsigned int>(_maxImageUnits))
+        if (!createRenderResources(image, true))
         {
             return false;
         }
+    }
 
-        int textureUnit = getBoundTextureLocation(resourceId);
-        if (textureUnit < 0) return false;
-        glActiveTexture(GL_TEXTURE0 + textureUnit);
-        glBindTexture(GL_TEXTURE_2D, resourceId);
+    // Update bound location if not already bound
+    int textureUnit = getBoundTextureLocation(image->getResourceId());
+    if (textureUnit < 0)
+    {
+        textureUnit = getNextAvailableTextureLocation();
+    }
+    if (textureUnit < 0)
+    {
+        std::cerr << "Exceeded maximum number of bound textures in GLTextureHandler::bindImage" << std::endl;
+        return false;
+    }      
+    _boundTextureLocations[textureUnit] = image->getResourceId();
 
-        // Set up texture properties
-        //
-        GLint minFilterType = mapFilterTypeToGL(samplingProperties.filterType);
-        // Note: Magnification filters are more restrictive than minification
-        GLint magFilterType = (minFilterType == GL_LINEAR || minFilterType == GL_REPEAT) ? minFilterType : GL_LINEAR;
-        GLint uaddressMode = mapAddressModeToGL(samplingProperties.uaddressMode);
-        GLint vaddressMode = mapAddressModeToGL(samplingProperties.vaddressMode);
-        glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, samplingProperties.defaultColor.data());
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, uaddressMode);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, vaddressMode);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, magFilterType);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, minFilterType);
+    glActiveTexture(GL_TEXTURE0 + textureUnit);
+    glBindTexture(GL_TEXTURE_2D, image->getResourceId());
 
-        return true;
+    // Set up texture properties
+    GLint minFilterType = mapFilterTypeToGL(samplingProperties.filterType, samplingProperties.enableMipmaps);
+    GLint magFilterType = GL_LINEAR; // Magnification filters are more restrictive than minification
+    GLint uaddressMode = mapAddressModeToGL(samplingProperties.uaddressMode);
+    GLint vaddressMode = mapAddressModeToGL(samplingProperties.vaddressMode);
+    Color4 borderColor(samplingProperties.defaultColor);
+    glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor.data());
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, uaddressMode);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, vaddressMode);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, minFilterType);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, magFilterType);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, 16.0f);
+
+    return true;
+}
+
+bool GLTextureHandler::unbindImage(ImagePtr image)
+{
+    if (image->getResourceId() != GlslProgram::UNDEFINED_OPENGL_RESOURCE_ID)
+    {
+        int textureUnit = getBoundTextureLocation(image->getResourceId());
+        if (textureUnit >= 0)
+        {
+            glActiveTexture(GL_TEXTURE0 + textureUnit);
+            glBindTexture(GL_TEXTURE_2D, GlslProgram::UNDEFINED_OPENGL_RESOURCE_ID);
+            _boundTextureLocations[textureUnit] = GlslProgram::UNDEFINED_OPENGL_RESOURCE_ID;
+            return true;
+        }
     }
     return false;
 }
 
-int GLTextureHandler::mapAddressModeToGL(int addressModeEnum)
+bool GLTextureHandler::createRenderResources(ImagePtr image, bool generateMipMaps)
 {
-    int addressMode = GL_REPEAT;
+    if (image->getResourceId() == GlslProgram::UNDEFINED_OPENGL_RESOURCE_ID)
+    {
+        unsigned int resourceId;
+        glGenTextures(1, &resourceId);
+        if (resourceId == GlslProgram::UNDEFINED_OPENGL_RESOURCE_ID)
+        {
+            std::cerr << "Failed to generate render resource for texture" << std::endl;
+            return false;
+        }
+        image->setResourceId(resourceId);
+    }
 
-    // Mapping is from "black". Use clamp to border
-    // with border color black to achieve this
-    if (addressModeEnum == 0)
+    int textureUnit = getNextAvailableTextureLocation();
+    if (textureUnit < 0)
     {
-        addressMode = GL_CLAMP_TO_BORDER;
+        return false;
     }
-    // Clamp
-    else if (addressModeEnum == 1)
+
+    glActiveTexture(GL_TEXTURE0 + textureUnit);
+    glBindTexture(GL_TEXTURE_2D, image->getResourceId());
+
+    int glType, glFormat, glInternalFormat;
+    mapTextureFormatToGL(image->getBaseType(), image->getChannelCount(), false,
+        glType, glFormat, glInternalFormat);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, glInternalFormat, image->getWidth(), image->getHeight(),
+        0, glFormat, glType, image->getResourceBuffer());
+    if (image->getChannelCount() == 1)
     {
-        addressMode = GL_CLAMP_TO_EDGE;
+        GLint swizzleMask[] = { GL_RED, GL_RED, GL_RED, GL_ONE };
+        glTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_RGBA, swizzleMask);
     }
-    return addressMode;
+
+    if (generateMipMaps)
+    {
+        glGenerateMipmap(GL_TEXTURE_2D);
+    }
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    return true;
 }
-
-int GLTextureHandler::mapFilterTypeToGL(int filterTypeEnum)
+    
+void GLTextureHandler::releaseRenderResources(ImagePtr image)
 {
-    int filterType = GL_LINEAR_MIPMAP_LINEAR;
-    // 0 = closest
-    if (filterTypeEnum == 0)
+    if (!image || image->getResourceId() == GlslProgram::UNDEFINED_OPENGL_RESOURCE_ID)
     {
-        filterType = GL_NEAREST;
-    }
-    // 1 == linear
-    else if (filterTypeEnum == 1)
-    {
-        filterType = GL_LINEAR;
-    }
-    return filterType;
-}
-
-void GLTextureHandler::deleteImage(MaterialX::ImageDesc& imageDesc)
-{
-    if (!glActiveTexture)
-    {
-        glewInit();
+        return;
     }
 
-    if (imageDesc.resourceId != MaterialX::GlslProgram::UNDEFINED_OPENGL_RESOURCE_ID)
-    {
-        // Unbind a texture from image unit and delete the texture
-        int textureUnit = getBoundTextureLocation(imageDesc.resourceId);
-        if(textureUnit < 0) return;
-        glActiveTexture(GL_TEXTURE0 + textureUnit);
-        glBindTexture(GL_TEXTURE_2D, MaterialX::GlslProgram::UNDEFINED_OPENGL_RESOURCE_ID);
-        glDeleteTextures(1, &imageDesc.resourceId);
-        _boundTextureLocations[textureUnit] = MaterialX::GlslProgram::UNDEFINED_OPENGL_RESOURCE_ID;
-        imageDesc.resourceId = MaterialX::GlslProgram::UNDEFINED_OPENGL_RESOURCE_ID;
-    }
-
-    // Delete any CPU side memory
-    ImageHandler::deleteImage(imageDesc);
+    unbindImage(image);
+    unsigned int resourceId = image->getResourceId();
+    glDeleteTextures(1, &resourceId);
+    image->setResourceId(GlslProgram::UNDEFINED_OPENGL_RESOURCE_ID);
 }
 
 int GLTextureHandler::getBoundTextureLocation(unsigned int resourceId)
 {
-    for(size_t i=0; i<_boundTextureLocations.size(); i++)
+    for (size_t i = 0; i < _boundTextureLocations.size(); i++)
     {
-        if(_boundTextureLocations[i] == resourceId)
+        if (_boundTextureLocations[i] == resourceId)
         {
             return static_cast<int>(i);
         }
@@ -282,9 +158,9 @@ int GLTextureHandler::getBoundTextureLocation(unsigned int resourceId)
 
 int GLTextureHandler::getNextAvailableTextureLocation()
 {
-    for(size_t i=0; i<_boundTextureLocations.size(); i++)
+    for (size_t i = 0; i < _boundTextureLocations.size(); i++)
     {
-        if(_boundTextureLocations[i] == MaterialX::GlslProgram::UNDEFINED_OPENGL_RESOURCE_ID)
+        if (_boundTextureLocations[i] == GlslProgram::UNDEFINED_OPENGL_RESOURCE_ID)
         {
             return static_cast<int>(i);
         }
@@ -292,4 +168,94 @@ int GLTextureHandler::getNextAvailableTextureLocation()
     return -1;
 }
 
+int GLTextureHandler::mapAddressModeToGL(ImageSamplingProperties::AddressMode addressModeEnum)
+{
+    const vector<int> addressModes
+    {
+        // Constant color. Use clamp to border
+        // with border color to achieve this
+        GL_CLAMP_TO_BORDER,
+
+        // Clamp
+        GL_CLAMP_TO_EDGE,
+
+        // Repeat
+        GL_REPEAT,
+
+        // Mirror
+        GL_MIRRORED_REPEAT
+    };
+
+    int addressMode = GL_REPEAT;
+    if (addressModeEnum != ImageSamplingProperties::AddressMode::UNSPECIFIED)
+    {
+        addressMode = addressModes[static_cast<int>(addressModeEnum)];
+    }
+    return addressMode;
 }
+
+int GLTextureHandler::mapFilterTypeToGL(ImageSamplingProperties::FilterType filterTypeEnum, bool enableMipmaps)
+{
+    int filterType = enableMipmaps ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR;
+    if (filterTypeEnum == ImageSamplingProperties::FilterType::CLOSEST)
+    {
+        filterType = enableMipmaps ? GL_NEAREST_MIPMAP_NEAREST : GL_NEAREST;
+    }
+    return filterType;
+}
+
+void GLTextureHandler::mapTextureFormatToGL(Image::BaseType baseType, unsigned int channelCount, bool srgb,
+                                            int& glType, int& glFormat, int& glInternalFormat)
+{
+    switch (channelCount)
+    {
+        case 4: glFormat = GL_RGBA; break;
+        case 3: glFormat = GL_RGB; break;
+        case 2: glFormat = GL_RG; break;
+        case 1: glFormat = GL_RED; break;
+        default: throw Exception("Unsupported channel count in mapTextureFormatToGL");
+    }
+
+    if (baseType == Image::BaseType::UINT8)
+    {
+        glType = GL_UNSIGNED_BYTE;
+        switch (channelCount)
+        {
+            case 4: glInternalFormat = srgb ? GL_SRGB8_ALPHA8 : GL_RGBA8; break;
+            case 3: glInternalFormat = srgb ? GL_SRGB8 : GL_RGB8; break;
+            case 2: glInternalFormat = GL_RG8; break;
+            case 1: glInternalFormat = GL_R8; break;
+            default: throw Exception("Unsupported channel count in mapTextureFormatToGL");
+        }
+    }
+    else if (baseType == Image::BaseType::HALF)
+    {
+        glType = GL_HALF_FLOAT;
+        switch (channelCount)
+        {
+            case 4: glInternalFormat = GL_RGBA16F; break;
+            case 3: glInternalFormat = GL_RGB16F; break;
+            case 2: glInternalFormat = GL_RG16F; break;
+            case 1: glInternalFormat = GL_R16F; break;
+            default: throw Exception("Unsupported channel count in mapTextureFormatToGL");
+        }
+    }
+    else if (baseType == Image::BaseType::FLOAT)
+    {
+        glType = GL_FLOAT;
+        switch (channelCount)
+        {
+            case 4: glInternalFormat = GL_RGBA32F; break;
+            case 3: glInternalFormat = GL_RGB32F; break;
+            case 2: glInternalFormat = GL_RG32F; break;
+            case 1: glInternalFormat = GL_R32F; break;
+            default: throw Exception("Unsupported channel count in mapTextureFormatToGL");
+        }
+    }
+    else
+    {
+        throw Exception("Unsupported base type in mapTextureFormatToGL");
+    }
+}
+
+} // namespace MaterialX

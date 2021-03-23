@@ -34,13 +34,29 @@ enum ShaderInterfaceType
 /// Method to use for specular environment lighting
 enum HwSpecularEnvironmentMethod
 {
-    /// Use pre-filtered environment maps for
-    /// specular environment/indirect lighting.
-    SPECULAR_ENVIRONMENT_PREFILTER,
+    /// Do not use specular environment maps
+    SPECULAR_ENVIRONMENT_NONE,
 
     /// Use Filtered Importance Sampling for
     /// specular environment/indirect lighting.
-    SPECULAR_ENVIRONMENT_FIS
+    SPECULAR_ENVIRONMENT_FIS,
+
+    /// Use pre-filtered environment maps for
+    /// specular environment/indirect lighting.
+    SPECULAR_ENVIRONMENT_PREFILTER
+};
+
+/// Method to use for directional albedo evaluation
+enum HwDirectionalAlbedoMethod
+{
+    /// Use a curve fit approximation for directional albedo.
+    DIRECTIONAL_ALBEDO_CURVE_FIT,
+
+    /// Use a table look-up for directional albedo.
+    DIRECTIONAL_ALBEDO_TABLE,
+
+    /// Use importance sampling for directional albedo.
+    DIRECTIONAL_ALBEDO_IS
 };
 
 /// @class GenOptions 
@@ -48,8 +64,23 @@ enum HwSpecularEnvironmentMethod
 class GenOptions
 {
   public:
-    GenOptions();
-    virtual ~GenOptions();
+    GenOptions() :
+        shaderInterfaceType(SHADER_INTERFACE_COMPLETE),
+        fileTextureVerticalFlip(false),
+        addUpstreamDependencies(true),
+        hwTransparency(false),
+        hwSpecularEnvironmentMethod(SPECULAR_ENVIRONMENT_FIS),
+        hwDirectionalAlbedoMethod(DIRECTIONAL_ALBEDO_CURVE_FIT),
+        hwWriteDepthMoments(false),
+        hwShadowMap(false),
+        hwAmbientOcclusion(false),
+        hwMaxActiveLightSources(3),
+        hwNormalizeUdimTexCoords(false),
+        hwWriteAlbedoTable(false),
+        hwMaxRadianceSamples(1024)
+    {
+    }
+    virtual ~GenOptions() { }
 
     // TODO: Add options for:
     //  - shader gen optimization level
@@ -69,6 +100,15 @@ class GenOptions
     /// input values and textures into this color space.
     string targetColorSpaceOverride;
 
+    /// Define the target distance unit.
+    /// Shader fragments will be generated to transform
+    /// input distance values to the given unit.
+    string targetDistanceUnit;
+    
+    /// Sets whether to include upstream dependencies 
+    /// for the element to generate a shader for.
+    bool addUpstreamDependencies;
+
     /// Sets if transparency is needed or not for HW shaders.
     /// If a surface shader has potential of being transparent
     /// this must be set to true, otherwise no transparency
@@ -76,13 +116,44 @@ class GenOptions
     /// the surface will be fully opaque.
     bool hwTransparency;
 
-    /// Sets the method to use for specular environment 
-    /// lighting for HW shader targets.
-    int hwSpecularEnvironmentMethod;
+    /// Sets the method to use for specular environment lighting
+    /// for HW shader targets.
+    HwSpecularEnvironmentMethod hwSpecularEnvironmentMethod;
+
+    /// Sets the method to use for directional albedo evaluation
+    /// for HW shader targets.
+    HwDirectionalAlbedoMethod hwDirectionalAlbedoMethod;
+
+    /// Enables the writing of depth moments for HW shader targets.
+    /// Defaults to false.
+    bool hwWriteDepthMoments;
+
+    /// Enables shadow mapping for HW shader targets.
+    /// Defaults to false.
+    bool hwShadowMap;
+
+    /// Enables ambient occlusion rendering for HW shader targets.
+    /// Defaults to false.
+    bool hwAmbientOcclusion;
 
     /// Sets the maximum number of light sources that can
     /// be active at once.
     unsigned int hwMaxActiveLightSources;
+
+    /// Sets whether to transform texture coordinates to normalize
+    /// uv space when UDIMs images are bound to an image. Can be
+    /// enabled for when texture atlas generation is performed to
+    /// compress a set of UDIMs into a single normalized image for
+    /// hardware rendering.
+    bool hwNormalizeUdimTexCoords;
+
+    /// Enables the writing of a directional albedo table.
+    /// Defaults to false.
+    bool hwWriteAlbedoTable;
+
+    /// Sets the maximum number of radiance samples 
+    unsigned int hwMaxRadianceSamples;
+
 };
 
 } // namespace MaterialX

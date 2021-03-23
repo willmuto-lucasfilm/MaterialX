@@ -18,6 +18,15 @@ The MaterialX codebase requires a compiler with support for C++11, and can be bu
 
 The Python bindings for MaterialX are based on [PyBind11](https://github.com/pybind/pybind11), and support Python versions 2.7 and 3.x.
 
+### Building MaterialX C++
+
+The MaterialX C++ libraries are automatically included when building MaterialX through CMake.
+
+Additional options for the generation of MaterialX C++ include the following:
+
+- `MATERIALX_BUILD_OIIO`: Requests that MaterialXRender be built with OpenImageIO instead of stb_image, extending the set of supported image formats.
+- `MATERIALX_OIIO_DIR`: Path to the root folder of an OpenImageIO installation.  If MATERIALX_BUILD_OIIO has been enabled, then this option may be used to select which installation is used.
+
 ### Building MaterialX Python
 
 By default, the `MATERIALX_BUILD_PYTHON` option will use the active version of Python in the developer's path.  To select a specific version of Python, use one or more of the following advanced options:
@@ -28,7 +37,7 @@ By default, the `MATERIALX_BUILD_PYTHON` option will use the active version of P
 Additional options for the generation of MaterialX Python include the following:
 
 - `MATERIALX_PYTHON_OCIO_DIR`: Path to a folder containing the default OCIO configuration to be packaged with MaterialX Python. The recommended OpenColorIO configuration for MaterialX is [ACES 1.0.3](https://github.com/imageworks/OpenColorIO-Configs/tree/master/aces_1.0.3).
-- `MATERIALX_PYTHON_PYBIND11_DIR`: Path to a folder containing the PyBind11 source. Defaults to the included PyBind11 source, which has been extended to support Python 2.6.
+- `MATERIALX_PYTHON_PYBIND11_DIR`: Path to a folder containing the PyBind11 source to be used in building MaterialX Python. Defaults to the included PyBind11 source.
 
 ### Building The MaterialX Viewer
 
@@ -44,5 +53,7 @@ Building the `install` target of your project will install the MaterialX C++ and
 
 ### Additional Links
 
-- The main [MaterialX website](http://www.materialx.org)
-- [Code Examples](@ref codeexamples) in C++ and Python
+- The main [MaterialX website](http://www.materialx.org) provides background on the project's history, industry collaborations, and recent presentations.
+- The [Python Scripts](https://github.com/materialx/MaterialX/tree/main/python/Scripts) folder contains standalone examples of MaterialX Python code.
+- The [MaterialX Unit Tests](https://github.com/materialx/MaterialX/tree/main/source/MaterialXTest) folder contains examples of useful patterns for MaterialX C++.
+- The [MaterialX Viewer](https://github.com/materialx/MaterialX/blob/main/documents/DeveloperGuide/Viewer.md) is a complete, cross-platform C++ application based upon [MaterialX Shader Generation](https://github.com/materialx/MaterialX/blob/main/documents/DeveloperGuide/ShaderGeneration.md)

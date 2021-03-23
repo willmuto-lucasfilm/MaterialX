@@ -10,6 +10,7 @@ namespace py = pybind11;
 void bindPyMesh(py::module& mod);
 void bindPyGeometryHandler(py::module& mod);
 void bindPyLightHandler(py::module& mod);
+void bindPyImage(py::module& mod);
 void bindPyImageHandler(py::module& mod);
 void bindPyStbImageLoader(py::module& mod);
 #ifdef MATERIALX_BUILD_OIIO
@@ -17,8 +18,7 @@ void bindPyOiioImageLoader(py::module& mod);
 #endif
 void bindPyTinyObjLoader(py::module& mod);
 void bindPyViewHandler(py::module& mod);
-void bindPyExceptionShaderValidationError(py::module& mod);
-void bindPyShaderValidator(py::module& mod);
+void bindPyShaderRenderer(py::module& mod);
 
 PYBIND11_MODULE(PyMaterialXRender, mod)
 {
@@ -27,6 +27,7 @@ PYBIND11_MODULE(PyMaterialXRender, mod)
     bindPyMesh(mod);
     bindPyGeometryHandler(mod);
     bindPyLightHandler(mod);
+    bindPyImage(mod);
     bindPyImageHandler(mod);
     bindPyStbImageLoader(mod);
 #ifdef MATERIALX_BUILD_OIIO
@@ -34,6 +35,5 @@ PYBIND11_MODULE(PyMaterialXRender, mod)
 #endif
     bindPyTinyObjLoader(mod);
     bindPyViewHandler(mod);
-    bindPyExceptionShaderValidationError(mod);
-    bindPyShaderValidator(mod);
+    bindPyShaderRenderer(mod);
 }

@@ -23,12 +23,16 @@ void bindPyDefinition(py::module& mod)
         .def("getNodeGroup", &mx::NodeDef::getNodeGroup)
         .def("getImplementation", &mx::NodeDef::getImplementation)
         .def("getImplementation", &mx::NodeDef::getImplementation,
-            py::arg("target") = mx::EMPTY_STRING,
-            py::arg("language") = mx::EMPTY_STRING)
-        .def("getInstantiatingShaderRefs", &mx::NodeDef::getInstantiatingShaderRefs)
+            py::arg("target") = mx::EMPTY_STRING)
         .def("isVersionCompatible", &mx::NodeDef::isVersionCompatible)
         .def_readonly_static("CATEGORY", &mx::NodeDef::CATEGORY)
-        .def_readonly_static("NODE_ATTRIBUTE", &mx::NodeDef::NODE_ATTRIBUTE);
+        .def_readonly_static("NODE_ATTRIBUTE", &mx::NodeDef::NODE_ATTRIBUTE)
+        .def_readonly_static("TEXTURE_NODE_GROUP", &mx::NodeDef::TEXTURE_NODE_GROUP)
+        .def_readonly_static("PROCEDURAL_NODE_GROUP", &mx::NodeDef::PROCEDURAL_NODE_GROUP)
+        .def_readonly_static("GEOMETRIC_NODE_GROUP", &mx::NodeDef::GEOMETRIC_NODE_GROUP)
+        .def_readonly_static("ADJUSTMENT_NODE_GROUP", &mx::NodeDef::ADJUSTMENT_NODE_GROUP)
+        .def_readonly_static("CONDITIONAL_NODE_GROUP", &mx::NodeDef::CONDITIONAL_NODE_GROUP)
+        .def_readonly_static("ORGANIZATION_NODE_GROUP", &mx::NodeDef::ORGANIZATION_NODE_GROUP);
 
     py::class_<mx::Implementation, mx::ImplementationPtr, mx::InterfaceElement>(mod, "Implementation")
         .def("setFile", &mx::Implementation::setFile)
@@ -37,15 +41,11 @@ void bindPyDefinition(py::module& mod)
         .def("setFunction", &mx::Implementation::setFunction)
         .def("hasFunction", &mx::Implementation::hasFunction)
         .def("getFunction", &mx::Implementation::getFunction)
-        .def("setLanguage", &mx::Implementation::setLanguage)
-        .def("hasLanguage", &mx::Implementation::hasLanguage)
-        .def("getLanguage", &mx::Implementation::getLanguage)
         .def("setNodeDef", &mx::Implementation::setNodeDef)
         .def("getNodeDef", &mx::Implementation::getNodeDef)
         .def_readonly_static("CATEGORY", &mx::Implementation::CATEGORY)
         .def_readonly_static("FILE_ATTRIBUTE", &mx::Implementation::FILE_ATTRIBUTE)
-        .def_readonly_static("FUNCTION_ATTRIBUTE", &mx::Implementation::FUNCTION_ATTRIBUTE)
-        .def_readonly_static("LANGUAGE_ATTRIBUTE", &mx::Implementation::LANGUAGE_ATTRIBUTE);
+        .def_readonly_static("FUNCTION_ATTRIBUTE", &mx::Implementation::FUNCTION_ATTRIBUTE);
 
     py::class_<mx::TypeDef, mx::TypeDefPtr, mx::Element>(mod, "TypeDef")
         .def("setSemantic", &mx::TypeDef::setSemantic)
@@ -65,4 +65,21 @@ void bindPyDefinition(py::module& mod)
 
     py::class_<mx::Member, mx::MemberPtr, mx::TypedElement>(mod, "Member")
         .def_readonly_static("CATEGORY", &mx::TypeDef::CATEGORY);
+
+    py::class_<mx::Unit, mx::UnitPtr, mx::Element>(mod, "Unit")
+        .def_readonly_static("CATEGORY", &mx::Unit::CATEGORY);
+
+    py::class_<mx::UnitDef, mx::UnitDefPtr, mx::Element>(mod, "UnitDef")
+        .def("setUnitType", &mx::UnitDef::hasUnitType)
+        .def("hasUnitType", &mx::UnitDef::hasUnitType)
+        .def("getUnitType", &mx::UnitDef::getUnitType)
+        .def("addUnit", &mx::UnitDef::addUnit)
+        .def("getUnit", &mx::UnitDef::getUnit)
+        .def("getUnits", &mx::UnitDef::getUnits)
+        .def_readonly_static("CATEGORY", &mx::UnitDef::CATEGORY)
+        .def_readonly_static("UNITTYPE_ATTRIBUTE", &mx::UnitDef::UNITTYPE_ATTRIBUTE);
+
+    py::class_<mx::UnitTypeDef, mx::UnitTypeDefPtr, mx::Element>(mod, "UnitTypeDef")
+        .def("getUnitDefs", &mx::UnitTypeDef::getUnitDefs)
+        .def_readonly_static("CATEGORY", &mx::UnitTypeDef::CATEGORY);
 }

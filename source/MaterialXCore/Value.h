@@ -12,9 +12,17 @@
 #include <MaterialXCore/Library.h>
 
 #include <MaterialXCore/Types.h>
+#include <MaterialXCore/Util.h>
 
 namespace MaterialX
 {
+
+/// A vector of integers.
+using IntVec = vector<int>;
+/// A vector of booleans.
+using BoolVec = vector<bool>;
+/// A vector of floats.
+using FloatVec = vector<float>;
 
 class Value;
 
@@ -49,6 +57,12 @@ class Value
         return std::make_shared< TypedValue<T> >(data);
     }
 
+    // Create a new value from a C-style string.
+    static ValuePtr createValue(const char* data)
+    {
+        return createValue(data ? string(data) : EMPTY_STRING);
+    }
+
     /// Create a new value instance from value and type strings.
     /// @return A shared pointer to a typed value, or an empty shared pointer
     ///    if the conversion to the given data type cannot be performed.
@@ -57,7 +71,6 @@ class Value
     /// Create a deep copy of the value.
     virtual ValuePtr copy() const = 0;
 
-    /// @}
     /// @name Data Accessors
     /// @{
 
@@ -100,19 +113,6 @@ class Value
     {
         return _floatPrecision;
     }
-
-    /// RAII class for scoped setting of float formatting.
-    /// Flags are reset when the object goes out of scope.
-    class ScopedFloatFormatting
-    {
-      public:
-        ScopedFloatFormatting(FloatFormat format, int precision = 6);
-        ~ScopedFloatFormatting();
-
-      private:
-        FloatFormat _format;
-        int _precision;
-    };
 
   protected:
     template <class T> friend class ValueRegistry;
@@ -184,6 +184,19 @@ template <class T> class TypedValue : public Value
 
   private:
     T _data;
+};
+
+/// @class ScopedFloatFormatting
+/// An RAII class for controlling the float formatting of values.
+class ScopedFloatFormatting
+{
+  public:
+    explicit ScopedFloatFormatting(Value::FloatFormat format, int precision = 6);
+    ~ScopedFloatFormatting();
+
+  private:
+    Value::FloatFormat _format;
+    int _precision;
 };
 
 /// @class ExceptionTypeError

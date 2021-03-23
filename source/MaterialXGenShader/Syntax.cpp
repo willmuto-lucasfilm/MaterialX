@@ -6,6 +6,7 @@
 #include <MaterialXGenShader/Syntax.h>
 #include <MaterialXGenShader/TypeDesc.h>
 #include <MaterialXGenShader/ShaderGenerator.h>
+#include <MaterialXGenShader/GenContext.h>
 
 #include <MaterialXCore/Value.h>
 
@@ -13,6 +14,8 @@ namespace MaterialX
 {
 
 const string Syntax::NEWLINE = "\n";
+const string Syntax::SEMICOLON = ";";
+const string Syntax::COMMA = ",";
 const string Syntax::INDENTATION = "    ";
 const string Syntax::STRING_QUOTE = "\"";
 const string Syntax::INCLUDE_STATEMENT = "#include";
@@ -20,17 +23,13 @@ const string Syntax::SINGLE_LINE_COMMENT = "// ";
 const string Syntax::BEGIN_MULTI_LINE_COMMENT = "/* ";
 const string Syntax::END_MULTI_LINE_COMMENT = " */";
 
-namespace {
-
-const std::unordered_map<char, size_t> CHANNELS_MAPPING =
+const std::unordered_map<char, size_t> Syntax::CHANNELS_MAPPING =
 {
     { 'r', 0 }, { 'x', 0 },
     { 'g', 1 }, { 'y', 1 },
     { 'b', 2 }, { 'z', 2 },
     { 'a', 3 }, { 'w', 3 }
 };
-
-} // anonymous namespace
 
 //
 // Syntax methods
@@ -54,12 +53,12 @@ void Syntax::registerTypeSyntax(const TypeDesc* type, TypeSyntaxPtr syntax)
     }
 
     // Make this type a restricted name
-    registerRestrictedNames({ syntax->getName() });
+    registerReservedWords({ syntax->getName() });
 }
 
-void Syntax::registerRestrictedNames(const StringSet& names)
+void Syntax::registerReservedWords(const StringSet& names)
 {
-    _restrictedNames.insert(names.begin(), names.end());
+    _reservedWords.insert(names.begin(), names.end());
 }
 
 void Syntax::registerInvalidTokens(const StringMap& tokens)
@@ -77,6 +76,24 @@ const TypeSyntax& Syntax::getTypeSyntax(const TypeDesc* type) const
         throw ExceptionShaderGenError("No syntax is defined for the given type '" + type->getName() + "'.");
     }
     return *_typeSyntaxes[it->second];
+}
+
+const TypeDesc* Syntax::getTypeDescription(const TypeSyntaxPtr& typeSyntax) const
+{
+    auto pos = std::find(_typeSyntaxes.begin(), _typeSyntaxes.end(), typeSyntax);
+    if (pos == _typeSyntaxes.end())
+    {
+        throw ExceptionShaderGenError("The syntax'" + typeSyntax->getName() + "' is not registered.");
+    }
+    const size_t index = static_cast<size_t>(std::distance(_typeSyntaxes.begin(), pos));
+    for (auto item : _typeSyntaxByType)
+    {
+        if (item.second == index)
+        {
+            return item.first;
+        }
+    }
+    return nullptr;
 }
 
 string Syntax::getValue(const TypeDesc* type, const Value& value, bool uniform) const
@@ -212,11 +229,6 @@ ValuePtr Syntax::getSwizzledValue(ValuePtr value, const TypeDesc* srcType, const
                 bool v = value->asA<bool>();
                 ss << std::to_string(v);
             }
-            else if (srcType == Type::COLOR2)
-            {
-                Color2 v = value->asA<Color2>();
-                ss << std::to_string(v[channelIndex]);
-            }
             else if (srcType == Type::COLOR3)
             {
                 Color3 v = value->asA<Color3>();
@@ -249,35 +261,12 @@ ValuePtr Syntax::getSwizzledValue(ValuePtr value, const TypeDesc* srcType, const
     return Value::createValueFromStrings(ss.str(), getTypeName(dstType));
 }
 
-void Syntax::makeUnique(string& name, UniqueNameMap& uniqueNames) const
-{
-    makeValidName(name);
-
-    UniqueNameMap::iterator it = uniqueNames.find(name);
-    if (it != uniqueNames.end())
-    {
-        name += std::to_string(++(it->second));
-    }
-    else
-    {
-        if (_restrictedNames.count(name))
-        {
-            uniqueNames[name] = 1;
-            name += "1";
-        }
-        else
-        {
-            uniqueNames[name] = 0;
-        }
-    }
-}
-
 bool Syntax::typeSupported(const TypeDesc*) const
 {
     return true;
 }
 
-string Syntax::getArraySuffix(const TypeDesc* type, const Value& value) const
+string Syntax::getArrayVariableSuffix(const TypeDesc* type, const Value& value) const
 {
     if (type->isArray())
     {
@@ -303,12 +292,43 @@ static bool isInvalidChar(char c)
 void Syntax::makeValidName(string& name) const
 {
     std::replace_if(name.begin(), name.end(), isInvalidChar, '_');
-    if (_invalidTokens.size())
-    {
-        name = replaceSubstrings(name, _invalidTokens);
-    }
+    name = replaceSubstrings(name, _invalidTokens);
 }
 
+void Syntax::makeIdentifier(string& name, IdentifierMap& identifiers) const
+{
+    makeValidName(name);
+
+    auto it = identifiers.find(name);
+    if (it != identifiers.end())
+    {
+        // Name is not unique so append the counter and keep
+        // incrementing until a unique name is found.
+        string name2;
+        do {
+            name2 = name + std::to_string(it->second++);
+        } while (identifiers.count(name2));
+
+        name = name2;
+    }
+
+    // Save it among the known identifiers.
+    identifiers[name] = 1;
+}
+
+string Syntax::getVariableName(const string& name, const TypeDesc* /*type*/, IdentifierMap& identifiers) const
+{
+    // Default implementation just makes an identifier, but derived 
+    // classes can override this for custom variable naming.
+    string variable = name;
+    makeIdentifier(variable, identifiers);
+    return variable;
+}
+
+bool Syntax::remapEnumeration(const string&, const TypeDesc*, const string&, std::pair<const TypeDesc*, ValuePtr>&) const
+{
+    return false;
+}
 
 const StringVec TypeSyntax::EMPTY_MEMBERS;
 

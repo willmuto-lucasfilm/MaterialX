@@ -12,7 +12,7 @@ namespace MaterialX
 
 namespace
 {
-    static const string LIGHT_DIRECTION_CALCULATION =
+    const string LIGHT_DIRECTION_CALCULATION =
         "vec3 L = light.position - position;\n"
         "float distance = length(L);\n"
         "L /= distance;\n"
@@ -23,8 +23,8 @@ LightNodeGlsl::LightNodeGlsl()
 {
     // Emission context
     _callEmission = HwClosureContext::create(HwClosureContext::EMISSION);
-    _callEmission->addArgument(Type::VECTOR3, "light.direction");
-    _callEmission->addArgument(Type::VECTOR3, "-L");
+    _callEmission->addArgument(Type::EDF, HwClosureContext::Argument(Type::VECTOR3, "light.direction"));
+    _callEmission->addArgument(Type::EDF, HwClosureContext::Argument(Type::VECTOR3, "-L"));
 }
 
 ShaderNodeImplPtr LightNodeGlsl::create()
@@ -32,7 +32,7 @@ ShaderNodeImplPtr LightNodeGlsl::create()
     return std::make_shared<LightNodeGlsl>();
 }
 
-void LightNodeGlsl::createVariables(const ShaderNode&, GenContext&, Shader& shader) const
+void LightNodeGlsl::createVariables(const ShaderNode&, GenContext& context, Shader& shader) const
 {
     ShaderStage& ps = shader.getStage(Stage::PIXEL);
 
@@ -42,9 +42,8 @@ void LightNodeGlsl::createVariables(const ShaderNode&, GenContext&, Shader& shad
     lightUniforms.add(Type::FLOAT, "exposure", Value::createValue<float>(0.0f));
     lightUniforms.add(Type::VECTOR3, "direction", Value::createValue<Vector3>(Vector3(0.0f,1.0f,0.0f)));
 
-    // Create uniform for number of active light sources
-    ShaderPort* numActiveLights = addStageUniform(HW::PRIVATE_UNIFORMS, Type::INTEGER, "u_numActiveLightSources", ps);
-    numActiveLights->setValue(Value::createValue<int>(0));
+    const GlslShaderGenerator& shadergen = static_cast<const GlslShaderGenerator&>(context.getShaderGenerator());
+    shadergen.addStageLightingUniforms(context, ps);
 }
 
 void LightNodeGlsl::emitFunctionCall(const ShaderNode& node, GenContext& context, ShaderStage& stage) const

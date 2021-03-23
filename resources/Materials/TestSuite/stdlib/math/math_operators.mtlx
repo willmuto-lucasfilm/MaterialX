@@ -1,17 +1,5 @@
-<!--
-
-Basic math operator function tests each test is in a separate graph for each variation in input type.
-- add
-- subtract
-- multiply
-- divide
-- modulo
-- power
-
--->
-
 <?xml version="1.0"?>
-<materialx version="1.36">
+<materialx version="1.38">
   <nodegraph name="add_float" type="" xpos="5.02395" ypos="14.1393">
     <add name="add1" type="float" xpos="5.74483" ypos="4.58">
       <input name="in1" type="float" value="0.2000" />
@@ -20,18 +8,18 @@ Basic math operator function tests each test is in a separate graph for each var
     <output name="out" type="float" nodename="add1" />
   </nodegraph>
   <nodegraph name="add_color2" type="" xpos="6.02691" ypos="14.1379">
-    <add name="add1" type="color2" xpos="5.74483" ypos="4.58">
-      <input name="in1" type="color2" value="0.2000, 0.0000" />
-      <input name="in2" type="color2" value="0.3000, 1.0" />
+    <add name="add1" type="vector2" xpos="5.74483" ypos="4.58">
+      <input name="in1" type="vector2" value="0.2000, 0.0000" />
+      <input name="in2" type="vector2" value="0.3000, 1.0" />
     </add>
-    <output name="out" type="color2" nodename="add1" />
+    <output name="out" type="vector2" nodename="add1" />
   </nodegraph>
   <nodegraph name="add_color2FA" type="" xpos="7.02041" ypos="14.1422">
-    <add name="add1" type="color2" xpos="5.74483" ypos="4.58">
-      <input name="in1" type="color2" value="0.2000, 0.4500" />
+    <add name="add1" type="vector2" xpos="5.74483" ypos="4.58">
+      <input name="in1" type="vector2" value="0.2000, 0.4500" />
       <input name="in2" type="float" value="0.3000" />
     </add>
-    <output name="out" type="color2" nodename="add1" />
+    <output name="out" type="vector2" nodename="add1" />
   </nodegraph>
   <nodegraph name="add_color3" type="" xpos="7.9931" ypos="14.134">
     <add name="add1" type="color3" xpos="5.74483" ypos="4.58">
@@ -111,18 +99,18 @@ Basic math operator function tests each test is in a separate graph for each var
     <output name="out" type="float" nodename="subtract1" />
   </nodegraph>
   <nodegraph name="subtract_color2" type="" xpos="6.05052" ypos="19.4188">
-    <subtract name="subtract1" type="color2" xpos="5.74483" ypos="4.58">
-      <input name="in1" type="color2" value="1.0000, 1.0" />
-      <input name="in2" type="color2" value="0.5000, 0.0000" />
+    <subtract name="subtract1" type="vector2" xpos="5.74483" ypos="4.58">
+      <input name="in1" type="vector2" value="1.0000, 1.0" />
+      <input name="in2" type="vector2" value="0.5000, 0.0000" />
     </subtract>
-    <output name="out" type="color2" nodename="subtract1" />
+    <output name="out" type="vector2" nodename="subtract1" />
   </nodegraph>
   <nodegraph name="subtract_color2FA" type="" xpos="7.04341" ypos="19.3986">
-    <subtract name="subtract1" type="color2" xpos="5.74483" ypos="4.58">
-      <input name="in1" type="color2" value="1.0000, 0.5000" />
+    <subtract name="subtract1" type="vector2" xpos="5.74483" ypos="4.58">
+      <input name="in1" type="vector2" value="1.0000, 0.5000" />
       <input name="in2" type="float" value="0.5000" />
     </subtract>
-    <output name="out" type="color2" nodename="subtract1" />
+    <output name="out" type="vector2" nodename="subtract1" />
   </nodegraph>
   <nodegraph name="subtract_color3" type="" xpos="8.05372" ypos="19.3682">
     <subtract name="subtract1" type="color3" xpos="5.74483" ypos="4.58">
@@ -202,18 +190,18 @@ Basic math operator function tests each test is in a separate graph for each var
     <output name="out" type="float" nodename="multiply1" />
   </nodegraph>
   <nodegraph name="multiply_color2" type="" xpos="6.03546" ypos="24.6125">
-    <multiply name="multiply1" type="color2" xpos="5.74483" ypos="4.58">
-      <input name="in1" type="color2" value="1.0000, 0.5000" />
-      <input name="in2" type="color2" value="0.5000, 0.5000" />
+    <multiply name="multiply1" type="vector2" xpos="5.74483" ypos="4.58">
+      <input name="in1" type="vector2" value="1.0000, 0.5000" />
+      <input name="in2" type="vector2" value="0.5000, 0.5000" />
     </multiply>
-    <output name="out" type="color2" nodename="multiply1" />
+    <output name="out" type="vector2" nodename="multiply1" />
   </nodegraph>
   <nodegraph name="multiply_color2FA" type="" xpos="7.06811" ypos="24.6065">
-    <multiply name="multiply1" type="color2" xpos="5.74483" ypos="4.58">
-      <input name="in1" type="color2" value="1.0000, 0.5000" />
+    <multiply name="multiply1" type="vector2" xpos="5.74483" ypos="4.58">
+      <input name="in1" type="vector2" value="1.0000, 0.5000" />
       <input name="in2" type="float" value="0.5000" />
     </multiply>
-    <output name="out" type="color2" nodename="multiply1" />
+    <output name="out" type="vector2" nodename="multiply1" />
   </nodegraph>
   <nodegraph name="multiply_color3" type="" xpos="8.07842" ypos="24.5762">
     <multiply name="multiply1" type="color3" xpos="5.74483" ypos="4.58">
@@ -293,18 +281,18 @@ Basic math operator function tests each test is in a separate graph for each var
     <output name="out" type="float" nodename="divide1" />
   </nodegraph>
   <nodegraph name="divide_color2" type="" xpos="6.03615" ypos="29.8753">
-    <divide name="divide1" type="color2" xpos="5.74483" ypos="4.58">
-      <input name="in1" type="color2" value="1.0000, 1.0" />
-      <input name="in2" type="color2" value="2.0000, 4.0000" />
+    <divide name="divide1" type="vector2" xpos="5.74483" ypos="4.58">
+      <input name="in1" type="vector2" value="1.0000, 1.0" />
+      <input name="in2" type="vector2" value="2.0000, 4.0000" />
     </divide>
-    <output name="out" type="color2" nodename="divide1" />
+    <output name="out" type="vector2" nodename="divide1" />
   </nodegraph>
   <nodegraph name="divide_color2FA" type="" xpos="7.03601" ypos="29.8795">
-    <divide name="divide1" type="color2" xpos="5.74483" ypos="4.6">
-      <input name="in1" type="color2" value="2.0000, 1.0" />
+    <divide name="divide1" type="vector2" xpos="5.74483" ypos="4.6">
+      <input name="in1" type="vector2" value="2.0000, 1.0" />
       <input name="in2" type="float" value="4.0000" />
     </divide>
-    <output name="out" type="color2" nodename="divide1" />
+    <output name="out" type="vector2" nodename="divide1" />
   </nodegraph>
   <nodegraph name="divide_color3" type="" xpos="8.05676" ypos="29.8391">
     <divide name="divide1" type="color3" xpos="5" ypos="10.08">
@@ -384,18 +372,18 @@ Basic math operator function tests each test is in a separate graph for each var
     <output name="out" type="float" nodename="modulo1" />
   </nodegraph>
   <nodegraph name="modulo_color2" type="" xpos="6.05718" ypos="35.3146">
-    <modulo name="modulo1" type="color2" xpos="5.74483" ypos="4.58">
-      <input name="in1" type="color2" value="1.5000, 1.0" />
-      <input name="in2" type="color2" value="1.0000, 1.0000" />
+    <modulo name="modulo1" type="vector2" xpos="5.74483" ypos="4.58">
+      <input name="in1" type="vector2" value="1.5000, 1.0" />
+      <input name="in2" type="vector2" value="1.0000, 1.0000" />
     </modulo>
-    <output name="out" type="color2" nodename="modulo1" />
+    <output name="out" type="vector2" nodename="modulo1" />
   </nodegraph>
   <nodegraph name="modulo_color2FA" type="" xpos="7.06583" ypos="35.2972">
-    <modulo name="modulo1" type="color2" xpos="5.74483" ypos="4.58">
-      <input name="in1" type="color2" value="1.5000, 1.0" />
+    <modulo name="modulo1" type="vector2" xpos="5.74483" ypos="4.58">
+      <input name="in1" type="vector2" value="1.5000, 1.0" />
       <input name="in2" type="float" value="1.0000" />
     </modulo>
-    <output name="out" type="color2" nodename="modulo1" />
+    <output name="out" type="vector2" nodename="modulo1" />
   </nodegraph>
   <nodegraph name="modulo_color3" type="" xpos="8.10143" ypos="35.2346">
     <modulo name="modulo1" type="color3" xpos="5.74483" ypos="4.58">
@@ -475,18 +463,18 @@ Basic math operator function tests each test is in a separate graph for each var
     <output name="out" type="float" nodename="power1" />
   </nodegraph>
   <nodegraph name="power_color2" type="" xpos="6.10347" ypos="40.7878">
-    <power name="power1" type="color2" xpos="5.74483" ypos="4.58">
-      <input name="in1" type="color2" value="0.5000, 1.0" />
-      <input name="in2" type="color2" value="2.0000, 1.0" />
+    <power name="power1" type="vector2" xpos="5.74483" ypos="4.58">
+      <input name="in1" type="vector2" value="0.5000, 1.0" />
+      <input name="in2" type="vector2" value="2.0000, 1.0" />
     </power>
-    <output name="out" type="color2" nodename="power1" />
+    <output name="out" type="vector2" nodename="power1" />
   </nodegraph>
   <nodegraph name="power_color2FA" type="" xpos="7.13288" ypos="40.7668">
-    <power name="power1" type="color2" xpos="5.74483" ypos="4.58">
-      <input name="in1" type="color2" value="0.5000, 1.0000" />
+    <power name="power1" type="vector2" xpos="5.74483" ypos="4.58">
+      <input name="in1" type="vector2" value="0.5000, 1.0000" />
       <input name="in2" type="float" value="2.0000" />
     </power>
-    <output name="out" type="color2" nodename="power1" />
+    <output name="out" type="vector2" nodename="power1" />
   </nodegraph>
   <nodegraph name="power_color3" type="" xpos="8.17625" ypos="40.7566">
     <power name="power1" type="color3" xpos="5.74483" ypos="4.56">
@@ -560,134 +548,134 @@ Basic math operator function tests each test is in a separate graph for each var
   </nodegraph>
   <nodegraph name="add_matrix33">
     <add name="add1" type="matrix33">
-      <input name="in1" type="matrix33" value="0.5, 0.0, 0.0,  0.0, 0.5, 0.0,  0.0, 0.0, 0.5"/>
-      <input name="in2" type="matrix33" value="0.5, 0.0, 0.0,  0.0, 0.5, 0.0,  0.0, 0.0, 0.5"/>
+      <input name="in1" type="matrix33" value="0.5, 0.0, 0.0,  0.0, 0.5, 0.0,  0.0, 0.0, 0.5" />
+      <input name="in2" type="matrix33" value="0.5, 0.0, 0.0,  0.0, 0.5, 0.0,  0.0, 0.0, 0.5" />
     </add>
-    <transformvector name="transformvector1" type="vector3">
-      <input name="in" type="vector3" value="0.5, 0.5, 0.5"/>
-      <input name="mat" type="matrix33" nodename="add1"/>
-    </transformvector>
-    <output name="out" type="vector3" nodename="transformvector1"/>
+    <transformmatrix name="transformmatrix1" type="vector3">
+      <input name="in" type="vector3" value="0.5, 0.5, 0.5" />
+      <input name="mat" type="matrix33" nodename="add1" />
+    </transformmatrix>
+    <output name="out" type="vector3" nodename="transformmatrix1" />
   </nodegraph>
   <nodegraph name="add_matrix44">
     <add name="add1" type="matrix44">
-      <input name="in1" type="matrix44" value="0.5, 0.0, 0.0, 0.0,  0.0, 0.5, 0.0, 0.0,  0.0, 0.0, 0.5, 0.0,  0.0, 0.0, 0.0, 0.5"/>
-      <input name="in2" type="matrix44" value="0.5, 0.0, 0.0, 0.0,  0.0, 0.5, 0.0, 0.0,  0.0, 0.0, 0.5, 0.0,  0.0, 0.0, 0.0, 0.5"/>
+      <input name="in1" type="matrix44" value="0.5, 0.0, 0.0, 0.0,  0.0, 0.5, 0.0, 0.0,  0.0, 0.0, 0.5, 0.0,  0.0, 0.0, 0.0, 0.5" />
+      <input name="in2" type="matrix44" value="0.5, 0.0, 0.0, 0.0,  0.0, 0.5, 0.0, 0.0,  0.0, 0.0, 0.5, 0.0,  0.0, 0.0, 0.0, 0.5" />
     </add>
-    <transformvector name="transformvector1" type="vector4">
-      <input name="in" type="vector4" value="0.5, 0.5, 0.5, 1.0"/>
-      <input name="mat" type="matrix44" nodename="add1"/>
-    </transformvector>
-    <output name="out" type="vector4" nodename="transformvector1"/>
+    <transformmatrix name="transformmatrix1" type="vector4">
+      <input name="in" type="vector4" value="0.5, 0.5, 0.5, 1.0" />
+      <input name="mat" type="matrix44" nodename="add1" />
+    </transformmatrix>
+    <output name="out" type="vector4" nodename="transformmatrix1" />
   </nodegraph>
   <nodegraph name="add_matrix33FA">
     <add name="add1" type="matrix33">
-      <input name="in1" type="matrix33" value="1.0, 0.0, 0.0,  0.0, 1.0, 0.0,  0.0, 0.0, 1.0"/>
-      <input name="in2" type="float" value="0.0"/>
+      <input name="in1" type="matrix33" value="1.0, 0.0, 0.0,  0.0, 1.0, 0.0,  0.0, 0.0, 1.0" />
+      <input name="in2" type="float" value="0.0" />
     </add>
-    <transformvector name="transformvector1" type="vector3">
-      <input name="in" type="vector3" value="0.5, 0.5, 0.5"/>
-      <input name="mat" type="matrix33" nodename="add1"/>
-    </transformvector>
-    <output name="out" type="vector3" nodename="transformvector1"/>
+    <transformmatrix name="transformmatrix1" type="vector3">
+      <input name="in" type="vector3" value="0.5, 0.5, 0.5" />
+      <input name="mat" type="matrix33" nodename="add1" />
+    </transformmatrix>
+    <output name="out" type="vector3" nodename="transformmatrix1" />
   </nodegraph>
   <nodegraph name="add_matrix44FA">
     <add name="add1" type="matrix44">
-      <input name="in1" type="matrix44" value="1.0, 0.0, 0.0, 0.0,  0.0, 1.0, 0.0, 0.0,  0.0, 0.0, 1.0, 0.0,  0.0, 0.0, 0.0, 1.0"/>
-      <input name="in2" type="float" value="0.0"/>
+      <input name="in1" type="matrix44" value="1.0, 0.0, 0.0, 0.0,  0.0, 1.0, 0.0, 0.0,  0.0, 0.0, 1.0, 0.0,  0.0, 0.0, 0.0, 1.0" />
+      <input name="in2" type="float" value="0.0" />
     </add>
-    <transformvector name="transformvector1" type="vector4">
-      <input name="in" type="vector4" value="0.5, 0.5, 0.5, 1.0"/>
-      <input name="mat" type="matrix44" nodename="add1"/>
-    </transformvector>
-    <output name="out" type="vector4" nodename="transformvector1"/>
+    <transformmatrix name="transformmatrix1" type="vector4">
+      <input name="in" type="vector4" value="0.5, 0.5, 0.5, 1.0" />
+      <input name="mat" type="matrix44" nodename="add1" />
+    </transformmatrix>
+    <output name="out" type="vector4" nodename="transformmatrix1" />
   </nodegraph>
   <nodegraph name="subtract_matrix33">
     <subtract name="subtract1" type="matrix33">
-      <input name="in1" type="matrix33" value="1.5, 0.0, 0.0,  0.0, 1.5, 0.0,  0.0, 0.0, 1.5"/>
-      <input name="in2" type="matrix33" value="0.5, 0.0, 0.0,  0.0, 0.5, 0.0,  0.0, 0.0, 0.5"/>
+      <input name="in1" type="matrix33" value="1.5, 0.0, 0.0,  0.0, 1.5, 0.0,  0.0, 0.0, 1.5" />
+      <input name="in2" type="matrix33" value="0.5, 0.0, 0.0,  0.0, 0.5, 0.0,  0.0, 0.0, 0.5" />
     </subtract>
-    <transformvector name="transformvector1" type="vector3">
-      <input name="in" type="vector3" value="0.5, 0.5, 0.5"/>
-      <input name="mat" type="matrix33" nodename="subtract1"/>
-    </transformvector>
-    <output name="out" type="vector3" nodename="transformvector1"/>
+    <transformmatrix name="transformmatrix1" type="vector3">
+      <input name="in" type="vector3" value="0.5, 0.5, 0.5" />
+      <input name="mat" type="matrix33" nodename="subtract1" />
+    </transformmatrix>
+    <output name="out" type="vector3" nodename="transformmatrix1" />
   </nodegraph>
   <nodegraph name="subtract_matrix44">
     <subtract name="subtract1" type="matrix44">
-      <input name="in1" type="matrix44" value="1.5, 0.0, 0.0, 0.0,  0.0, 1.5, 0.0, 0.0,  0.0, 0.0, 1.5, 0.0,  0.0, 0.0, 0.0, 1.5"/>
-      <input name="in2" type="matrix44" value="0.5, 0.0, 0.0, 0.0,  0.0, 0.5, 0.0, 0.0,  0.0, 0.0, 0.5, 0.0,  0.0, 0.0, 0.0, 0.5"/>
+      <input name="in1" type="matrix44" value="1.5, 0.0, 0.0, 0.0,  0.0, 1.5, 0.0, 0.0,  0.0, 0.0, 1.5, 0.0,  0.0, 0.0, 0.0, 1.5" />
+      <input name="in2" type="matrix44" value="0.5, 0.0, 0.0, 0.0,  0.0, 0.5, 0.0, 0.0,  0.0, 0.0, 0.5, 0.0,  0.0, 0.0, 0.0, 0.5" />
     </subtract>
-    <transformvector name="transformvector1" type="vector4">
-      <input name="in" type="vector4" value="0.5, 0.5, 0.5, 1.0"/>
-      <input name="mat" type="matrix44" nodename="subtract1"/>
-    </transformvector>
-    <output name="out" type="vector4" nodename="transformvector1"/>
+    <transformmatrix name="transformmatrix1" type="vector4">
+      <input name="in" type="vector4" value="0.5, 0.5, 0.5, 1.0" />
+      <input name="mat" type="matrix44" nodename="subtract1" />
+    </transformmatrix>
+    <output name="out" type="vector4" nodename="transformmatrix1" />
   </nodegraph>
   <nodegraph name="subtract_matrix33FA">
     <subtract name="subtract1" type="matrix33">
-      <input name="in1" type="matrix33" value="1.0, 0.0, 0.0,  0.0, 1.0, 0.0,  0.0, 0.0, 1.0"/>
-      <input name="in2" type="float" value="0.0"/>
+      <input name="in1" type="matrix33" value="1.0, 0.0, 0.0,  0.0, 1.0, 0.0,  0.0, 0.0, 1.0" />
+      <input name="in2" type="float" value="0.0" />
     </subtract>
-    <transformvector name="transformvector1" type="vector3">
-      <input name="in" type="vector3" value="0.5, 0.5, 0.5"/>
-      <input name="mat" type="matrix33" nodename="subtract1"/>
-    </transformvector>
-    <output name="out" type="vector3" nodename="transformvector1"/>
+    <transformmatrix name="transformmatrix1" type="vector3">
+      <input name="in" type="vector3" value="0.5, 0.5, 0.5" />
+      <input name="mat" type="matrix33" nodename="subtract1" />
+    </transformmatrix>
+    <output name="out" type="vector3" nodename="transformmatrix1" />
   </nodegraph>
   <nodegraph name="subtract_matrix44FA">
     <subtract name="subtract1" type="matrix44">
-      <input name="in1" type="matrix44" value="1.0, 0.0, 0.0, 0.0,  0.0, 1.0, 0.0, 0.0,  0.0, 0.0, 1.0, 0.0,  0.0, 0.0, 0.0, 1.0"/>
-      <input name="in2" type="float" value="0.0"/>
+      <input name="in1" type="matrix44" value="1.0, 0.0, 0.0, 0.0,  0.0, 1.0, 0.0, 0.0,  0.0, 0.0, 1.0, 0.0,  0.0, 0.0, 0.0, 1.0" />
+      <input name="in2" type="float" value="0.0" />
     </subtract>
-    <transformvector name="transformvector1" type="vector4">
-      <input name="in" type="vector4" value="0.5, 0.5, 0.5, 1.0"/>
-      <input name="mat" type="matrix44" nodename="subtract1"/>
-    </transformvector>
-    <output name="out" type="vector4" nodename="transformvector1"/>
+    <transformmatrix name="transformmatrix1" type="vector4">
+      <input name="in" type="vector4" value="0.5, 0.5, 0.5, 1.0" />
+      <input name="mat" type="matrix44" nodename="subtract1" />
+    </transformmatrix>
+    <output name="out" type="vector4" nodename="transformmatrix1" />
   </nodegraph>
   <nodegraph name="multiply_matrix33">
     <multiply name="multiply1" type="matrix33">
-      <input name="in1" type="matrix33" value="1.0, 0.0, 0.0,  0.0, 1.0, 0.0,  0.0, 0.0, 1.0"/>
-      <input name="in2" type="matrix33" value="1.0, 0.0, 0.0,  0.0, 1.0, 0.0,  0.0, 0.0, 1.0"/>
+      <input name="in1" type="matrix33" value="1.0, 0.0, 0.0,  0.0, 1.0, 0.0,  0.0, 0.0, 1.0" />
+      <input name="in2" type="matrix33" value="1.0, 0.0, 0.0,  0.0, 1.0, 0.0,  0.0, 0.0, 1.0" />
     </multiply>
-    <transformvector name="transformvector1" type="vector3">
-      <input name="in" type="vector3" value="0.5, 0.5, 0.5"/>
-      <input name="mat" type="matrix33" nodename="multiply1"/>
-    </transformvector>
-    <output name="out" type="vector3" nodename="transformvector1"/>
+    <transformmatrix name="transformmatrix1" type="vector3">
+      <input name="in" type="vector3" value="0.5, 0.5, 0.5" />
+      <input name="mat" type="matrix33" nodename="multiply1" />
+    </transformmatrix>
+    <output name="out" type="vector3" nodename="transformmatrix1" />
   </nodegraph>
   <nodegraph name="multiply_matrix44">
     <multiply name="multiply1" type="matrix44">
-      <input name="in1" type="matrix44" value="1.0, 0.0, 0.0, 0.0,  0.0, 1.0, 0.0, 0.0,  0.0, 0.0, 1.0, 0.0,  0.0, 0.0, 0.0, 1.0"/>
-      <input name="in2" type="matrix44" value="1.0, 0.0, 0.0, 0.0,  0.0, 1.0, 0.0, 0.0,  0.0, 0.0, 1.0, 0.0,  0.0, 0.0, 0.0, 1.0"/>
+      <input name="in1" type="matrix44" value="1.0, 0.0, 0.0, 0.0,  0.0, 1.0, 0.0, 0.0,  0.0, 0.0, 1.0, 0.0,  0.0, 0.0, 0.0, 1.0" />
+      <input name="in2" type="matrix44" value="1.0, 0.0, 0.0, 0.0,  0.0, 1.0, 0.0, 0.0,  0.0, 0.0, 1.0, 0.0,  0.0, 0.0, 0.0, 1.0" />
     </multiply>
-    <transformvector name="transformvector1" type="vector4">
-      <input name="in" type="vector4" value="0.5, 0.5, 0.5, 1.0"/>
-      <input name="mat" type="matrix44" nodename="multiply1"/>
-    </transformvector>
-    <output name="out" type="vector4" nodename="transformvector1"/>
+    <transformmatrix name="transformmatrix1" type="vector4">
+      <input name="in" type="vector4" value="0.5, 0.5, 0.5, 1.0" />
+      <input name="mat" type="matrix44" nodename="multiply1" />
+    </transformmatrix>
+    <output name="out" type="vector4" nodename="transformmatrix1" />
   </nodegraph>
   <nodegraph name="divide_matrix33">
     <divide name="divide1" type="matrix33">
-      <input name="in1" type="matrix33" value="1.0, 0.0, 0.0,  0.0, 1.0, 0.0,  0.0, 0.0, 1.0"/>
-      <input name="in2" type="matrix33" value="1.0, 1.0, 1.0,  1.0, 1.0, 1.0,  1.0, 1.0, 1.0"/>
+      <input name="in1" type="matrix33" value="1.0, 0.0, 0.0,  0.0, 1.0, 0.0,  0.0, 0.0, 1.0" />
+      <input name="in2" type="matrix33" value="1.0, 1.0, 1.0,  1.0, 1.0, 1.0,  1.0, 1.0, 1.0" />
     </divide>
-    <transformvector name="transformvector1" type="vector3">
-      <input name="in" type="vector3" value="0.5, 0.5, 0.5"/>
-      <input name="mat" type="matrix33" nodename="divide1"/>
-    </transformvector>
-    <output name="out" type="vector3" nodename="transformvector1"/>
+    <transformmatrix name="transformmatrix1" type="vector3">
+      <input name="in" type="vector3" value="0.5, 0.5, 0.5" />
+      <input name="mat" type="matrix33" nodename="divide1" />
+    </transformmatrix>
+    <output name="out" type="vector3" nodename="transformmatrix1" />
   </nodegraph>
   <nodegraph name="divide_matrix44">
     <divide name="divide1" type="matrix44">
-      <input name="in1" type="matrix44" value="1.0, 0.0, 0.0, 0.0,  0.0, 1.0, 0.0, 0.0,  0.0, 0.0, 1.0, 0.0,  0.0, 0.0, 0.0, 1.0"/>
-      <input name="in2" type="matrix44" value="1.0, 1.0, 1.0, 1.0,  1.0, 1.0, 1.0, 1.0,  1.0, 1.0, 1.0, 1.0,  1.0, 1.0, 1.0, 1.0"/>
+      <input name="in1" type="matrix44" value="1.0, 0.0, 0.0, 0.0,  0.0, 1.0, 0.0, 0.0,  0.0, 0.0, 1.0, 0.0,  0.0, 0.0, 0.0, 1.0" />
+      <input name="in2" type="matrix44" value="1.0, 1.0, 1.0, 1.0,  1.0, 1.0, 1.0, 1.0,  1.0, 1.0, 1.0, 1.0,  1.0, 1.0, 1.0, 1.0" />
     </divide>
-    <transformvector name="transformvector1" type="vector4">
-      <input name="in" type="vector4" value="0.5, 0.5, 0.5, 1.0"/>
-      <input name="mat" type="matrix44" nodename="divide1"/>
-    </transformvector>
-    <output name="out" type="vector4" nodename="transformvector1"/>
+    <transformmatrix name="transformmatrix1" type="vector4">
+      <input name="in" type="vector4" value="0.5, 0.5, 0.5, 1.0" />
+      <input name="mat" type="matrix44" nodename="divide1" />
+    </transformmatrix>
+    <output name="out" type="vector4" nodename="transformmatrix1" />
   </nodegraph>
 </materialx>

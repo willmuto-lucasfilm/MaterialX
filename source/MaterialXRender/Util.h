@@ -9,80 +9,119 @@
 /// @file
 /// Rendering utility methods
 
-#include <MaterialXCore/Document.h>
-#include <MaterialXGenShader/ShaderGenerator.h>
 #include <MaterialXGenShader/GenContext.h>
+#include <MaterialXGenShader/ShaderGenerator.h>
 #include <MaterialXGenShader/Util.h>
 
 #include <map>
 
 namespace MaterialX
 {
-    /// @name Shader utilities
-    /// @{
 
-    /// Create a shader for a given element
-    ShaderPtr createShader(const string& shaderName, GenContext& context, ElementPtr elem);
+/// @name Shader Utilities
+/// @{
 
-    /// Create a shader with a constant color output for a given element
-    ShaderPtr createConstantShader(GenContext& context,
-                                   DocumentPtr stdLib,
-                                   const string& shaderName,
-                                   const Color3& color);
+/// Create a shader for a given element.
+ShaderPtr createShader(const string& shaderName, GenContext& context, ElementPtr elem);
 
-    /// @}
-    /// @name User interface utilities
-    /// @{ 
+/// Create a shader with a constant color output, using the given standard libraries
+/// for code generation.
+ShaderPtr createConstantShader(GenContext& context,
+                               DocumentPtr stdLib,
+                               const string& shaderName,
+                               const Color3& color);
 
-    /// Set of possible UI properties for an element 
-    struct UIProperties
-    {
-        /// UI name
-        string uiName;
+/// Create a shader with depth value output, using the given standard libraries
+/// for code generation.
+ShaderPtr createDepthShader(GenContext& context,
+                            DocumentPtr stdLib,
+                            const string& shaderName);
 
-        /// UI folder
-        string uiFolder;
+/// Create a shader that generates a look-up table for directional albedo, using
+/// the given standard libraries for code generation.
+ShaderPtr createAlbedoTableShader(GenContext& context,
+                                  DocumentPtr stdLib,
+                                  const string& shaderName);
 
-        /// Enumeration
-        StringVec enumeration;
+/// Create a blur shader, using the given standard libraries for code generation.
+ShaderPtr createBlurShader(GenContext& context,
+                           DocumentPtr stdLib,
+                           const string& shaderName,
+                           const string& filterType,
+                           float filterSize);
 
-        /// Enumeration Values
-        vector<ValuePtr> enumerationValues;
+/// @}
+/// @name User Interface Utilities
+/// @{
 
-        /// UI minimum value
-        ValuePtr uiMin;
+/// Set of possible UI properties for an element
+struct UIProperties
+{
+    /// UI name
+    string uiName;
 
-        /// UI maximum value
-        ValuePtr uiMax;
-    };
+    /// UI folder
+    string uiFolder;
 
-    /// Get the UI properties for a given nodedef element.
-    /// Returns the number of properties found.
-    unsigned int getUIProperties(ValueElementPtr nodeDefElement, UIProperties& uiProperties);
+    /// Enumeration
+    StringVec enumeration;
 
-    /// Get the UI properties for a given element path. If the path is to a node, a target
-    /// identifier can be provided.
-    /// Returns the number of properties found.
-    unsigned int getUIProperties(const string& path, DocumentPtr doc, const string& target, UIProperties& uiProperties);
+    /// Enumeration Values
+    vector<ValuePtr> enumerationValues;
 
-    /// Interface for holding the UI properties associated shader port
-    struct UIPropertyItem
-    {
-        std::string label;
-        ShaderPort* variable = nullptr;
-        UIProperties ui;
-    };
+    /// UI minimum value
+    ValuePtr uiMin;
 
-    /// A grouping of property items by name
-    using UIPropertyGroup = std::multimap<string, UIPropertyItem>;
+    /// UI maximum value
+    ValuePtr uiMax;
 
-    /// Utility to group UI properties items based on ELement group name.
-    /// Returns a list of named and unnamed groups.
-    void createUIPropertyGroups(const VariableBlock& block, DocumentPtr contentDocument, TypedElementPtr materialElement,
-                                const string& pathSeparator, UIPropertyGroup& groups,
-                                UIPropertyGroup& unnamedGroups);
+    /// UI soft minimum value
+    ValuePtr uiSoftMin;
 
-    /// @}
+    /// UI soft maximum value
+    ValuePtr uiSoftMax;
+
+    /// UI step value
+    ValuePtr uiStep;
+
+    /// UI advanced element
+    bool uiAdvanced = false;
+};
+
+/// Get the UI properties for a given nodedef element.
+/// Returns the number of properties found.
+unsigned int getUIProperties(ConstValueElementPtr nodeDefElement, UIProperties& uiProperties);
+
+/// Get the UI properties for a given element path. If the path is to a node, a target
+/// identifier can be provided.
+/// Returns the number of properties found.
+unsigned int getUIProperties(const string& path, DocumentPtr doc, const string& target, UIProperties& uiProperties);
+
+/// Interface for holding the UI properties associated shader port
+struct UIPropertyItem
+{
+    string label;
+    ValuePtr value;
+    ShaderPort* variable = nullptr;
+    UIProperties ui;
+};
+
+/// A grouping of property items by name
+using UIPropertyGroup = std::multimap<string, UIPropertyItem>;
+
+/// Utility to group UI properties items based on Element group name from an element.
+/// Returns a list of named and unnamed groups.
+void createUIPropertyGroups(ElementPtr uniformElement, DocumentPtr contentDocument, TypedElementPtr materialElement,
+                            const string& pathSeparator, UIPropertyGroup& groups,
+                            UIPropertyGroup& unnamedGroups, ShaderPort* uniform = nullptr);
+
+/// Utility to group UI properties items based on Element group name from a VariableBlock.
+/// Returns a list of named and unnamed groups.
+void createUIPropertyGroups(const VariableBlock& block, DocumentPtr contentDocument, TypedElementPtr materialElement,
+                            const string& pathSeparator, UIPropertyGroup& groups,
+                            UIPropertyGroup& unnamedGroups, bool addFromDefinition);
+
+/// @}
 
 } // namespace MaterialX
 

@@ -13,7 +13,7 @@ namespace MaterialX
 const Edge NULL_EDGE(nullptr, nullptr, nullptr);
 
 const TreeIterator NULL_TREE_ITERATOR(nullptr);
-const GraphIterator NULL_GRAPH_ITERATOR(nullptr, nullptr);
+const GraphIterator NULL_GRAPH_ITERATOR(nullptr);
 const InheritanceIterator NULL_INHERITANCE_ITERATOR(nullptr);
 
 //
@@ -50,7 +50,7 @@ TreeIterator& TreeIterator::operator++()
     if (!_prune && _elem && !_elem->getChildren().empty())
     {
         // Traverse to the first child of this element.
-        _stack.push_back(StackFrame(_elem, 0));
+        _stack.emplace_back(_elem, 0);
         _elem = _elem->getChildren()[0];
         return *this;
     }
@@ -112,9 +112,9 @@ GraphIterator& GraphIterator::operator++()
     if (!_prune && _upstreamElem && _upstreamElem->getUpstreamEdgeCount())
     {
         // Traverse to the first upstream edge of this element.
-        _stack.push_back(StackFrame(_upstreamElem, 0));
-        Edge nextEdge = _upstreamElem->getUpstreamEdge(_material, 0);
-        if (nextEdge)
+        _stack.emplace_back(_upstreamElem, 0);
+        Edge nextEdge = _upstreamElem->getUpstreamEdge(0);
+        if (nextEdge && nextEdge.getUpstreamElement())
         {
             extendPathUpstream(nextEdge.getUpstreamElement(), nextEdge.getConnectingElement());
             return *this;
@@ -140,8 +140,8 @@ GraphIterator& GraphIterator::operator++()
         StackFrame& parentFrame = _stack.back();
         if (parentFrame.second + 1 < parentFrame.first->getUpstreamEdgeCount())
         {
-            Edge nextEdge = parentFrame.first->getUpstreamEdge(_material, ++parentFrame.second);
-            if (nextEdge)
+            Edge nextEdge = parentFrame.first->getUpstreamEdge(++parentFrame.second);
+            if (nextEdge && nextEdge.getUpstreamElement())
             {
                 extendPathUpstream(nextEdge.getUpstreamElement(), nextEdge.getConnectingElement());
                 return *this;

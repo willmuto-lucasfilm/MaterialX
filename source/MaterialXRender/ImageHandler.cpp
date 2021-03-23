@@ -3,54 +3,49 @@
 // All rights reserved.  See LICENSE.txt for license.
 //
 
-#include <MaterialXCore/Types.h>
-#include <MaterialXGenShader/Util.h>
 #include <MaterialXRender/ImageHandler.h>
-#include <cmath>
+
+#include <MaterialXGenShader/Shader.h>
+#include <MaterialXGenShader/Util.h>
+
+#include <iostream>
 
 namespace MaterialX
 {
-string ImageDesc::BASETYPE_UINT8 = "UINT8";
-string ImageDesc::BASETYPE_HALF = "HALF";
-string ImageDesc::BASETYPE_FLOAT = "FLOAT";
 
-string ImageDesc::IMAGETYPE_2D = "IMAGE2D";
+const string IMAGE_PROPERTY_SEPARATOR("_");
+const string UADDRESS_MODE_SUFFIX(IMAGE_PROPERTY_SEPARATOR + "uaddressmode");
+const string VADDRESS_MODE_SUFFIX(IMAGE_PROPERTY_SEPARATOR + "vaddressmode");
+const string FILTER_TYPE_SUFFIX(IMAGE_PROPERTY_SEPARATOR + "filtertype");
+const string DEFAULT_COLOR_SUFFIX(IMAGE_PROPERTY_SEPARATOR + "default");
 
-void ImageDesc::freeResourceBuffer()
-{
-    if (resourceBuffer)
-    {
-        if (resourceBufferDeallocator)
-        {
-            resourceBufferDeallocator(resourceBuffer);
-        }
-        else
-        {
-            free(resourceBuffer);
-        }
-        resourceBuffer = nullptr;
-    }
-}
+const string ImageLoader::BMP_EXTENSION = "bmp";
+const string ImageLoader::EXR_EXTENSION = "exr";
+const string ImageLoader::GIF_EXTENSION = "gif";
+const string ImageLoader::HDR_EXTENSION = "hdr";
+const string ImageLoader::JPG_EXTENSION = "jpg";
+const string ImageLoader::JPEG_EXTENSION = "jpeg";
+const string ImageLoader::PIC_EXTENSION = "pic";
+const string ImageLoader::PNG_EXTENSION = "png";
+const string ImageLoader::PSD_EXTENSION = "psd";
+const string ImageLoader::TGA_EXTENSION = "tga";
+const string ImageLoader::TIF_EXTENSION = "tif";
+const string ImageLoader::TIFF_EXTENSION = "tiff";
+const string ImageLoader::TX_EXTENSION = "tx";
+const string ImageLoader::TXT_EXTENSION = "txt";
+const string ImageLoader::TXR_EXTENSION = "txr";
 
-string ImageLoader::BMP_EXTENSION = "bmp";
-string ImageLoader::EXR_EXTENSION = "exr";
-string ImageLoader::GIF_EXTENSION = "gif";
-string ImageLoader::HDR_EXTENSION = "hdr";
-string ImageLoader::JPG_EXTENSION = "jpg";
-string ImageLoader::JPEG_EXTENSION = "jpeg";
-string ImageLoader::PIC_EXTENSION = "pic";
-string ImageLoader::PNG_EXTENSION = "png";
-string ImageLoader::PSD_EXTENSION = "psd";
-string ImageLoader::TGA_EXTENSION = "tga";
-string ImageLoader::TIF_EXTENSION = "tif";
-string ImageLoader::TIFF_EXTENSION = "tiff";
-string ImageLoader::TX_EXTENSION = "tx";
-string ImageLoader::TXT_EXTENSION = "txt";
-string ImageLoader::TXR_EXTENSION = "txr";
+//
+// ImageHandler methods
+//
 
 ImageHandler::ImageHandler(ImageLoaderPtr imageLoader)
 {
     addLoader(imageLoader);
+    _zeroImage = createUniformImage(2, 2, 4, Image::BaseType::UINT8, Color4(0.0f));
+
+    // Generated shaders interpret 1x1 textures as invalid images.
+    _invalidImage = createUniformImage(1, 1, 4, Image::BaseType::UINT8, Color4(0.0f));
 }
 
 void ImageHandler::addLoader(ImageLoaderPtr loader)
@@ -58,155 +53,235 @@ void ImageHandler::addLoader(ImageLoaderPtr loader)
     if (loader)
     {
         const StringSet& extensions = loader->supportedExtensions();
-        for (auto extension : extensions)
+        for (const auto& extension : extensions)
         {
-            _imageLoaders.insert(std::pair<string, ImageLoaderPtr>(extension, loader));
+            _imageLoaders[extension].push_back(loader);
         }
     }
 }
 
-void ImageHandler::supportedExtensions(StringSet& extensions)
+StringSet ImageHandler::supportedExtensions()
 {
-    extensions.clear();
-    for (auto loader : _imageLoaders)
+    StringSet extensions;
+    for (const auto& pair : _imageLoaders)
     {
-        const StringSet& loaderExtensions = loader.second->supportedExtensions();
-        extensions.insert(loaderExtensions.begin(), loaderExtensions.end());
+        extensions.insert(pair.first);
     }
+    return extensions;
 }
 
 bool ImageHandler::saveImage(const FilePath& filePath,
-                             const ImageDesc &imageDesc,
+                             ConstImagePtr image,
                              bool verticalFlip)
 {
-    FilePath foundFilePath = findFile(filePath);
+    if (!image)
+    {
+        return false;
+    }
+
+    FilePath foundFilePath =  _searchPath.find(filePath);
     if (foundFilePath.isEmpty())
     {
         return false;
     }
 
     string extension = foundFilePath.getExtension();
-    ImageLoaderMap::reverse_iterator iter;
-    for (iter = _imageLoaders.rbegin(); iter != _imageLoaders.rend(); ++iter)
+    for (ImageLoaderPtr loader : _imageLoaders[extension])
     {
-        ImageLoaderPtr loader = iter->second;
-        if (loader && loader->supportedExtensions().count(extension))
+        bool saved = false;
+        try
         {
-            bool saved = iter->second->saveImage(foundFilePath, imageDesc, verticalFlip);
-            if (saved)
-            {
-                return true;
-            }
+            saved = loader->saveImage(foundFilePath, image, verticalFlip);
+        }
+        catch (std::exception& e)
+        {
+            std::cerr << "Exception in image I/O library: " << e.what() << std::endl;
+        }
+        if (saved)
+        {
+            return true;
         }
     }
     return false;
 }
 
-bool ImageHandler::acquireImage(const FilePath& filePath, ImageDesc& imageDesc, bool /*generateMipMaps*/, const Color4* /*fallbackColor*/)
+ImagePtr ImageHandler::acquireImage(const FilePath& filePath)
 {
-    FilePath foundFilePath = findFile(filePath);
-    if (foundFilePath.isEmpty())
+    // Resolve the input filepath.
+    FilePath resolvedFilePath = filePath;
+    if (_resolver)
     {
-        return false;
+        resolvedFilePath = _resolver->resolve(resolvedFilePath, FILENAME_TYPE_STRING);
     }
 
-    string extension = foundFilePath.getExtension();
-    ImageLoaderMap::reverse_iterator iter;
-    for (iter = _imageLoaders.rbegin(); iter != _imageLoaders.rend(); ++iter)
+    // Return a cached image if available.
+    ImagePtr cachedImage = getCachedImage(resolvedFilePath);
+    if (cachedImage)
     {
-        ImageLoaderPtr loader = iter->second;
-        if (loader && loader->supportedExtensions().count(extension))
-        {
-            bool acquired = loader->acquireImage(foundFilePath, imageDesc, getRestrictions());
-            if (acquired)
-            {
-                return true;
-            }
-        }
+        return cachedImage;
     }
-    return false;
+
+    // Load and cache the requested image.
+    ImagePtr image = loadImage(_searchPath.find(resolvedFilePath));
+    if (image)
+    {
+        cacheImage(resolvedFilePath, image);
+        return image;
+    }
+
+    // No valid image was found, so cache the sentinel invalid image.
+    cacheImage(resolvedFilePath, _invalidImage);
+    return _invalidImage;
 }
 
-bool ImageHandler::createColorImage(const Color4& color,
-                                    ImageDesc& desc)
-{
-    unsigned int bufferSize = desc.width * desc.height * desc.channelCount;
-    if (bufferSize < 1)
-    {
-        return false;
-    }
-
-    // Create a solid color image
-    //
-    desc.resourceBuffer = new float[bufferSize];
-    float* pixel = static_cast<float*>(desc.resourceBuffer);
-    for (size_t i = 0; i<desc.width; i++)
-    {
-        for (size_t j = 0; j<desc.height; j++)
-        {
-            for (unsigned int c = 0; c < desc.channelCount; c++)
-            {
-                *pixel++ = color[c];
-            }
-        }
-    }
-    desc.computeMipCount();
-    desc.resourceBufferDeallocator = [](void *buffer)
-    {
-        delete[] static_cast<float*>(buffer);
-    };
-    return true;
-}
-
-bool ImageHandler::bindImage(const string& /*identifier*/, const ImageSamplingProperties& /*samplingProperties*/)
+bool ImageHandler::bindImage(ImagePtr, const ImageSamplingProperties&)
 {
     return false;
 }
 
-void ImageHandler::cacheImage(const string& identifier, const ImageDesc& desc)
+bool ImageHandler::unbindImage(ImagePtr)
 {
-    if (!_imageCache.count(identifier))
+    return false;
+}
+
+void ImageHandler::unbindImages()
+{
+    for (auto iter : _imageCache)
     {
-        _imageCache[identifier] = desc;
+        unbindImage(iter.second);
     }
 }
 
-void ImageHandler::uncacheImage(const string& identifier)
+bool ImageHandler::createRenderResources(ImagePtr, bool)
 {
-    _imageCache.erase(identifier);
+    return false;
 }
 
-const ImageDesc* ImageHandler::getCachedImage(const string& identifier)
+void ImageHandler::releaseRenderResources(ImagePtr)
 {
-    if (_imageCache.count(identifier))
+}
+
+ImagePtr ImageHandler::loadImage(const FilePath& filePath)
+{
+    string extension = stringToLower(filePath.getExtension());
+    for (ImageLoaderPtr loader : _imageLoaders[extension])
     {
-        return &(_imageCache[identifier]);
+        ImagePtr image;
+        try
+        {
+            image = loader->loadImage(filePath);
+        }
+        catch (std::exception& e)
+        {
+            std::cerr << "Exception in image I/O library: " << e.what() << std::endl;
+        }
+        if (image)
+        {
+            // Generated shaders interpret 1x1 textures as invalid images, so valid 1x1
+            // images must be resized.
+            if (image->getWidth() == 1 && image->getHeight() == 1)
+            {
+                image = createUniformImage(2, 2, image->getChannelCount(),
+                                           image->getBaseType(), image->getTexelColor(0, 0));
+            }
+
+            return image;
+        }
     }
+
+    if (!filePath.isEmpty())
+    {
+        if (!filePath.exists())
+        {
+            std::cerr << string("Image file not found: ") + filePath.asString() << std::endl;
+        }
+        else if (!_imageLoaders.count(extension))
+        {
+            std::cerr << string("Unsupported image extension: ") + filePath.asString() << std::endl;
+        }
+        else
+        {
+            std::cerr << string("Image loader failed to parse image: ") + filePath.asString() << std::endl;
+        }
+    }
+
     return nullptr;
 }
 
-void ImageHandler::setSearchPath(const FileSearchPath& path)
+void ImageHandler::cacheImage(const string& filePath, ImagePtr image)
 {
-    _searchPath = path;
+    _imageCache[filePath] = image;
 }
 
-FilePath ImageHandler::findFile(const FilePath& filePath)
+ImagePtr ImageHandler::getCachedImage(const FilePath& filePath)
 {
-    return _searchPath.find(filePath);
-}
-
-void ImageHandler::deleteImage(ImageDesc& imageDesc)
-{
-    imageDesc.freeResourceBuffer();
+    if (_imageCache.count(filePath))
+    {
+        return _imageCache[filePath];
+    }
+    if (!filePath.isAbsolute())
+    {
+        for (const FilePath& path : _searchPath)
+        {
+            FilePath combined = path / filePath;
+            if (_imageCache.count(combined))
+            {
+                return _imageCache[combined];
+            }
+        }
+    }
+    return nullptr;
 }
 
 void ImageHandler::clearImageCache()
 {
     for (auto iter : _imageCache)
     {
-        deleteImage(iter.second);
+        releaseRenderResources(iter.second);
     }
     _imageCache.clear();
+}
+
+//
+// ImageSamplingProperties methods
+//
+
+void ImageSamplingProperties::setProperties(const string& fileNameUniform,
+                                            const VariableBlock& uniformBlock)
+{
+    const int INVALID_MAPPED_INT_VALUE = -1; // Any value < 0 is not considered to be invalid
+
+    // Get the additional texture parameters based on image uniform name
+    // excluding the trailing "_file" postfix string
+    string root = fileNameUniform;
+    size_t pos = root.find_last_of(IMAGE_PROPERTY_SEPARATOR);
+    if (pos != string::npos)
+    {
+        root = root.substr(0, pos);
+    }
+
+    const string uaddressmodeStr = root + UADDRESS_MODE_SUFFIX;
+    const ShaderPort* port = uniformBlock.find(uaddressmodeStr);
+    ValuePtr intValue = port ? port->getValue() : nullptr;
+    uaddressMode = ImageSamplingProperties::AddressMode(intValue && intValue->isA<int>() ? intValue->asA<int>() : INVALID_MAPPED_INT_VALUE);
+
+    const string vaddressmodeStr = root + VADDRESS_MODE_SUFFIX;
+    port = uniformBlock.find(vaddressmodeStr);
+    intValue = port ? port->getValue() : nullptr;
+    vaddressMode = ImageSamplingProperties::AddressMode(intValue && intValue->isA<int>() ? intValue->asA<int>() : INVALID_MAPPED_INT_VALUE);
+
+    const string filtertypeStr = root + FILTER_TYPE_SUFFIX;
+    port = uniformBlock.find(filtertypeStr);
+    intValue = port ? port->getValue() : nullptr;
+    filterType = ImageSamplingProperties::FilterType(intValue && intValue->isA<int>() ? intValue->asA<int>() : INVALID_MAPPED_INT_VALUE);
+
+    const string defaultColorStr = root + DEFAULT_COLOR_SUFFIX;
+    port = uniformBlock.find(defaultColorStr);
+    ValuePtr colorValue = port ? port->getValue() : nullptr;
+    if (colorValue)
+    {
+        mapValueToColor(colorValue, defaultColor);
+    }
 }
 
 } // namespace MaterialX

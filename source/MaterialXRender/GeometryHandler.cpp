@@ -3,24 +3,26 @@
 // All rights reserved.  See LICENSE.txt for license.
 //
 
-#include <MaterialXGenShader/Util.h>
 #include <MaterialXRender/GeometryHandler.h>
+
+#include <MaterialXGenShader/HwShaderGenerator.h>
+#include <MaterialXGenShader/Util.h>
 
 namespace MaterialX
 {
 void GeometryHandler::addLoader(GeometryLoaderPtr loader)
 {
     const StringSet& extensions = loader->supportedExtensions();
-    for (auto extension : extensions)
+    for (const auto& extension : extensions)
     {
-        _geometryLoaders.insert(std::pair<std::string, GeometryLoaderPtr>(extension, loader));
+        _geometryLoaders.emplace(extension, loader);
     }
 }
 
 void GeometryHandler::supportedExtensions(StringSet& extensions)
 {
     extensions.clear();
-    for (auto loader : _geometryLoaders)
+    for (const auto& loader : _geometryLoaders)
     {
         const StringSet& loaderExtensions = loader.second->supportedExtensions();
         extensions.insert(loaderExtensions.begin(), loaderExtensions.end());
@@ -35,7 +37,7 @@ void GeometryHandler::clearGeometry()
 
 bool GeometryHandler::hasGeometry(const string& location)
 {
-    for (auto mesh : _meshes)
+    for (const auto& mesh : _meshes)
     {
         if (mesh->getSourceUri() == location)
         {
@@ -48,7 +50,7 @@ bool GeometryHandler::hasGeometry(const string& location)
 void GeometryHandler::getGeometry(MeshList& meshes, const string& location)
 {
     meshes.clear();
-    for (auto mesh : _meshes)
+    for (const auto& mesh : _meshes)
     {
         if (mesh->getSourceUri() == location)
         {
@@ -62,7 +64,7 @@ void GeometryHandler::computeBounds()
     const float MAX_FLOAT = std::numeric_limits<float>::max();
     _minimumBounds = { MAX_FLOAT, MAX_FLOAT, MAX_FLOAT };
     _maximumBounds = { -MAX_FLOAT, -MAX_FLOAT, -MAX_FLOAT };
-    for (auto mesh : _meshes)
+    for (const auto& mesh : _meshes)
     {
         const Vector3& minMesh = mesh->getMinimumBounds();
         _minimumBounds[0] = std::min(minMesh[0], _minimumBounds[0]);
@@ -106,6 +108,31 @@ bool GeometryHandler::loadGeometry(const FilePath& filePath)
     }
 
     return loaded;
+}
+
+MeshPtr GeometryHandler::createQuadMesh()
+{
+    MeshStreamPtr quadPositions = MeshStream::create(HW::IN_POSITION, MeshStream::POSITION_ATTRIBUTE, 0);
+    quadPositions->setStride(MeshStream::STRIDE_3D);
+    quadPositions->getData().assign({  1.0f,  1.0f, 0.0f,
+                                       1.0f, -1.0f, 0.0f,
+                                      -1.0f, -1.0f, 0.0f,
+                                      -1.0f,  1.0f, 0.0f });
+    MeshStreamPtr quadTexCoords = MeshStream::create(HW::IN_TEXCOORD + "_0", MeshStream::TEXCOORD_ATTRIBUTE, 0);
+    quadTexCoords->setStride(MeshStream::STRIDE_2D);
+    quadTexCoords->getData().assign({ 1.0f, 1.0f,
+                                      1.0f, 0.0f,
+                                      0.0f, 0.0f,
+                                      0.0f, 1.0f });
+    MeshPartitionPtr quadIndices = MeshPartition::create();
+    quadIndices->getIndices().assign({ 0, 1, 3, 1, 2, 3 });
+    quadIndices->setFaceCount(6);
+    MeshPtr quadMesh = Mesh::create("ScreenSpaceQuad");
+    quadMesh->addStream(quadPositions);
+    quadMesh->addStream(quadTexCoords);
+    quadMesh->addPartition(quadIndices);
+    
+    return quadMesh;
 }
 
 } // namespace MaterialX

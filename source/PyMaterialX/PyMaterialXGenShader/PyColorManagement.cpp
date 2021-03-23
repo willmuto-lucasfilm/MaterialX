@@ -30,12 +30,12 @@ class PyColorManagementSystem : public mx::ColorManagementSystem
     }
 
   protected:
-    std::string getImplementationName(const mx::ColorSpaceTransform& transform) const override
+    mx::ImplementationPtr getImplementation(const mx::ColorSpaceTransform& transform) const override
     {
         PYBIND11_OVERLOAD_PURE(
-            std::string,
+            mx::ImplementationPtr,
             mx::ColorManagementSystem,
-            getImplementationName,
+            getImplementation,
             transform
         );
     }
@@ -55,7 +55,7 @@ void bindPyColorManagement(py::module& mod)
         .def("loadLibrary", &mx::ColorManagementSystem::loadLibrary)
         .def("supportsTransform", &mx::ColorManagementSystem::supportsTransform);
 
-    py::class_<mx::DefaultColorManagementSystem, mx::DefaultColorManagementSystemPtr>(mod, "DefaultColorManagementSystem")
+    py::class_<mx::DefaultColorManagementSystem, mx::DefaultColorManagementSystemPtr, mx::ColorManagementSystem>(mod, "DefaultColorManagementSystem")
         .def_static("create", &mx::DefaultColorManagementSystem::create)
         .def("getName", &mx::DefaultColorManagementSystem::getName);
 }

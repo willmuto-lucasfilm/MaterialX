@@ -21,11 +21,6 @@ ShaderNodeImplPtr LightCompoundNodeGlsl::create()
     return std::make_shared<LightCompoundNodeGlsl>();
 }
 
-const string& LightCompoundNodeGlsl::getLanguage() const
-{
-    return GlslShaderGenerator::LANGUAGE;
-}
-
 const string& LightCompoundNodeGlsl::getTarget() const
 {
     return GlslShaderGenerator::TARGET;
@@ -35,16 +30,12 @@ void LightCompoundNodeGlsl::initialize(const InterfaceElement& element, GenConte
 {
     CompoundNode::initialize(element, context);
 
-    // Store light uniforms for all inputs and parameters on the interface
+    // Store light uniforms for all inputs on the interface
     const NodeGraph& graph = static_cast<const NodeGraph&>(element);
     NodeDefPtr nodeDef = graph.getNodeDef();
     for (InputPtr input : nodeDef->getActiveInputs())
     {
         _lightUniforms.add(TypeDesc::get(input->getType()), input->getName());
-    }
-    for (ParameterPtr param : nodeDef->getActiveParameters())
-    {
-        _lightUniforms.add(TypeDesc::get(param->getType()), param->getName());
     }
 }
 
@@ -66,9 +57,8 @@ void LightCompoundNodeGlsl::createVariables(const ShaderNode&, GenContext& conte
         lightData.add(u->getSelf());
     }
 
-    // Create uniform for number of active light sources
-    ShaderPort* numActiveLights = addStageUniform(HW::PRIVATE_UNIFORMS, Type::INTEGER, "u_numActiveLightSources", ps);
-    numActiveLights->setValue(Value::createValue<int>(0));
+    const GlslShaderGenerator& shadergen = static_cast<const GlslShaderGenerator&>(context.getShaderGenerator());
+    shadergen.addStageLightingUniforms(context, ps);
 }
 
 void LightCompoundNodeGlsl::emitFunctionDefinition(const ShaderNode& node, GenContext& context, ShaderStage& stage) const
@@ -104,7 +94,10 @@ void LightCompoundNodeGlsl::emitFunctionDefinition(HwClosureContextPtr ccx, GenC
     // Emit function signature
     if (ccx)
     {
-        shadergen.emitLine("void " + _functionName + ccx->getSuffix() + "(LightData light, vec3 position, out lightshader result)", stage, false);
+        // Use the first output for classifying node type for the closure context.
+        // This is only relevent for closures, and they only have a single output.
+        const TypeDesc* nodeType = _rootGraph->getOutputSocket()->getType();
+        shadergen.emitLine("void " + _functionName + ccx->getSuffix(nodeType) + "(LightData light, vec3 position, out lightshader result)", stage, false);
     }
     else
     {

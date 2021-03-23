@@ -9,7 +9,7 @@
 /// @file
 /// Type descriptor for a MaterialX data type.
 
-#include <MaterialXGenShader/Library.h>
+#include <MaterialXCore/Library.h>
 
 namespace MaterialX
 {
@@ -48,6 +48,8 @@ class TypeDesc
         SEMANTIC_FILENAME,
         SEMANTIC_CLOSURE,
         SEMANTIC_SHADER,
+        SEMANTIC_MATERIAL,
+        SEMANTIC_ENUM,
         SEMANTIC_LAST
     };
 
@@ -57,7 +59,7 @@ class TypeDesc
                                         size_t size = 1, bool editable = true, const ChannelMap& channelMapping = ChannelMap());
 
     /// Get a type descriptor for given name.
-    /// Throws an exception if no type with that name is found.
+    /// Returns an empty shared pointer if no type with the given name is found.
     static const TypeDesc* get(const string& name);
 
     /// Return the name of the type.
@@ -130,7 +132,6 @@ namespace Type
     extern const TypeDesc* VECTOR2;
     extern const TypeDesc* VECTOR3;
     extern const TypeDesc* VECTOR4;
-    extern const TypeDesc* COLOR2;
     extern const TypeDesc* COLOR3;
     extern const TypeDesc* COLOR4;
     extern const TypeDesc* MATRIX33;
@@ -140,7 +141,6 @@ namespace Type
     extern const TypeDesc* BSDF;
     extern const TypeDesc* EDF;
     extern const TypeDesc* VDF;
-    extern const TypeDesc* ROUGHNESSINFO;
     extern const TypeDesc* SURFACESHADER;
     extern const TypeDesc* VOLUMESHADER;
     extern const TypeDesc* DISPLACEMENTSHADER;

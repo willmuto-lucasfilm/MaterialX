@@ -15,7 +15,7 @@ namespace MaterialX
 
 class GlslShaderGenerator;
 
-/// Implementation of 'light' node for GLSL
+/// LightCompound node implementation for GLSL
 class LightCompoundNodeGlsl : public CompoundNode
 {
 public:
@@ -23,7 +23,6 @@ public:
 
     static ShaderNodeImplPtr create();
 
-    const string& getLanguage() const override;
     const string& getTarget() const override;
 
     void initialize(const InterfaceElement& element, GenContext& context) override;

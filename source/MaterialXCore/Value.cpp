@@ -5,8 +5,6 @@
 
 #include <MaterialXCore/Value.h>
 
-#include <MaterialXCore/Util.h>
-
 #include <iomanip>
 #include <sstream>
 #include <type_traits>
@@ -30,12 +28,12 @@ template <class T> class is_std_vector< vector<T> > : public std::true_type { };
 template <class T> using enable_if_std_vector_t =
     typename std::enable_if<is_std_vector<T>::value, T>::type;
 
-template <class T> void stringToData(const string& value, T& data)
+template <class T> void stringToData(const string& str, T& data)
 {
-    std::stringstream ss(value);
+    std::stringstream ss(str);
     if (!(ss >> data))
     {
-        throw ExceptionTypeError("Type mismatch in generic stringToData: " + value);
+        throw ExceptionTypeError("Type mismatch in generic stringToData: " + str);
     }
 }
 
@@ -194,16 +192,6 @@ template <class T> T fromValueString(const string& value)
 // TypedValue methods
 //
 
-template <class T> const string& TypedValue<T>::getTypeString() const
-{
-    return TYPE;
-}
-
-template <class T> string TypedValue<T>::getValueString() const
-{
-    return toValueString<T>(_data);
-}
-
 template <class T> ValuePtr TypedValue<T>::createFromString(const string& value)
 {
     try
@@ -244,7 +232,7 @@ template<class T> const T& Value::asA() const
     return typedVal->getData();
 }
 
-Value::ScopedFloatFormatting::ScopedFloatFormatting(FloatFormat format, int precision) :
+ScopedFloatFormatting::ScopedFloatFormatting(Value::FloatFormat format, int precision) :
     _format(Value::getFloatFormat()),
     _precision(Value::getFloatPrecision())
 {
@@ -252,7 +240,7 @@ Value::ScopedFloatFormatting::ScopedFloatFormatting(FloatFormat format, int prec
     Value::setFloatPrecision(precision);
 }
 
-Value::ScopedFloatFormatting::~ScopedFloatFormatting()
+ScopedFloatFormatting::~ScopedFloatFormatting()
 {
     Value::setFloatFormat(_format);
     Value::setFloatPrecision(_precision);
@@ -279,24 +267,21 @@ template <class T> class ValueRegistry
 // Template instantiations
 //
 
-using IntVec = vector<int>;
-using BoolVec = vector<bool>;
-using FloatVec = vector<float>;
-
-#define INSTANTIATE_TYPE(T, name)                       \
-template <> const string TypedValue<T>::TYPE = name;    \
-template bool Value::isA<T>() const;                    \
-template const T& Value::asA<T>() const;                \
-template const string& getTypeString<T>();              \
-template string toValueString(const T& data);           \
-template T fromValueString(const string& value);        \
+#define INSTANTIATE_TYPE(T, name)                                                               \
+template <> const string TypedValue<T>::TYPE = name;                                            \
+template <> const string& TypedValue<T>::getTypeString() const { return TYPE; }                 \
+template <> string TypedValue<T>::getValueString() const { return toValueString<T>(_data); }    \
+template bool Value::isA<T>() const;                                                            \
+template const T& Value::asA<T>() const;                                                        \
+template const string& getTypeString<T>();                                                      \
+template string toValueString(const T& data);                                                   \
+template T fromValueString(const string& value);                                                \
 ValueRegistry<T> registry##T;
 
 // Base types
 INSTANTIATE_TYPE(int, "integer")
 INSTANTIATE_TYPE(bool, "boolean")
 INSTANTIATE_TYPE(float, "float")
-INSTANTIATE_TYPE(Color2, "color2")
 INSTANTIATE_TYPE(Color3, "color3")
 INSTANTIATE_TYPE(Color4, "color4")
 INSTANTIATE_TYPE(Vector2, "vector2")

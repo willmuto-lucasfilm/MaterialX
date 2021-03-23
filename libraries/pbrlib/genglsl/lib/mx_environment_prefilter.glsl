@@ -1,47 +1,29 @@
-vec2 mx_latlong_projection(vec3 dir)
+#include "pbrlib/genglsl/lib/mx_microfacet_specular.glsl"
+
+float mx_latlong_compute_lod(float roughness)
 {
-    float latitude = -asin(dir.y) * M_PI_INV + 0.5;
-    latitude = clamp(latitude, 0.01, 0.99);
-    float longitude = atan(dir.x, -dir.z) * M_PI_INV * 0.5 + 0.5;
-    return vec2(longitude, latitude);
+    // Select a mip level based on input roughness.
+    float lodBias = roughness < 0.25 ? sqrt(roughness) : 0.5*roughness + 0.375;
+    return lodBias * $envRadianceMips;
 }
 
-vec3 mx_latlong_map_lookup(vec3 dir, mat4 transform, sampler2D sampler)
+vec3 mx_environment_radiance(vec3 N, vec3 V, vec3 X, vec2 roughness, int distribution, FresnelData fd)
 {
-    vec2 res = textureSize(sampler, 0);
-    if (res.x > 0)
-    {
-        vec3 dir = normalize((transform * vec4(dir,0.0)).xyz);
-        vec2 uv = mx_latlong_projection(dir);
-        return texture(sampler, uv).rgb;
-    }
-    return vec3(0.0);
-}
+    N = mx_forward_facing_normal(N, V);
+    vec3 L = reflect(-V, N);
 
-vec3 mx_latlong_map_lookup(vec3 dir, mat4 transform, float lodBias, sampler2D sampler)
-{
-    vec2 res = textureSize(sampler, 0);
-    if (res.x > 0)
-    {
-        // Heuristic for faking a blur by roughness
-        int levels = 1 + int(floor(log2(max(res.x, res.y))));
-        lodBias = lodBias < 0.25 ? sqrt(lodBias) : 0.5*lodBias + 0.375;
-        float lod = lodBias * levels;
+    float NdotV = clamp(dot(N, V), M_FLOAT_EPS, 1.0);
 
-        vec3 dir = normalize((transform * vec4(dir,0.0)).xyz);
-        vec2 uv = mx_latlong_projection(dir);
-        return textureLod(sampler, uv, lod).rgb;
-    }
-    return vec3(0.0);
-}
+    float avgRoughness = mx_average_roughness(roughness);
+    vec3 F = mx_compute_fresnel(NdotV, fd);
+    float G = mx_ggx_smith_G(NdotV, NdotV, avgRoughness);
+    vec3 comp = mx_ggx_energy_compensation(NdotV, avgRoughness, F);
+    vec3 Li = mx_latlong_map_lookup(L, $envMatrix, mx_latlong_compute_lod(avgRoughness), $envRadiance);
 
-vec3 mx_environment_radiance(vec3 N, vec3 V, vec3 X, roughnessinfo roughness, int distribution)
-{
-    vec3 dir = reflect(-V, N);
-    return mx_latlong_map_lookup(dir, u_envMatrix, roughness.alpha, u_envRadiance);
+    return Li * F * G * comp;
 }
 
 vec3 mx_environment_irradiance(vec3 N)
 {
-    return mx_latlong_map_lookup(N, u_envMatrix, u_envIrradiance);
+    return mx_latlong_map_lookup(N, $envMatrix, 0.0, $envIrradiance);
 }

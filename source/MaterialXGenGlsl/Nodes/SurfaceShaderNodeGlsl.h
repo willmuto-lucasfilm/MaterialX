@@ -11,14 +11,13 @@
 namespace MaterialX
 {
 
-/// Implementation of surface shaders for GLSL.
+/// SurfaceShader node implementation for GLSL
 /// Used for all surface shaders implemented in source code.
 class SurfaceShaderNodeGlsl : public SourceCodeNode
 {
   public:
     static ShaderNodeImplPtr create();
 
-    const string& getLanguage() const override;
     const string& getTarget() const override;
 
     void createVariables(const ShaderNode& node, GenContext& context, Shader& shader) const override;

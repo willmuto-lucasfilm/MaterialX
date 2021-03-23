@@ -5,13 +5,14 @@
 
 #include <MaterialXGenShader/ShaderStage.h>
 
+#include <MaterialXGenShader/ShaderGenerator.h>
 #include <MaterialXGenShader/GenContext.h>
 #include <MaterialXGenShader/Syntax.h>
 #include <MaterialXGenShader/Util.h>
 
-#include <MaterialXCore/Document.h>
-#include <MaterialXCore/Node.h>
 #include <MaterialXCore/Value.h>
+
+#include <MaterialXFormat/Util.h>
 
 namespace MaterialX
 {
@@ -205,10 +206,14 @@ void ShaderStage::beginScope(Syntax::Punctuation punc)
         beginLine();
         _code += "[" + _syntax->getNewline();
         break;
+    case Syntax::DOUBLE_SQUARE_BRACKETS:
+        beginLine();
+        _code += "[[" + _syntax->getNewline();
+        break;
     }
 
     ++_indentations;
-    _scopes.push(punc);
+    _scopes.push_back(punc);
 }
 
 void ShaderStage::endScope(bool semicolon, bool newline)
@@ -219,7 +224,7 @@ void ShaderStage::endScope(bool semicolon, bool newline)
     }
 
     Syntax::Punctuation punc = _scopes.back();
-    _scopes.pop();
+    _scopes.pop_back();
     --_indentations;
 
     switch (punc) {
@@ -234,6 +239,10 @@ void ShaderStage::endScope(bool semicolon, bool newline)
     case Syntax::SQUARE_BRACKETS:
         beginLine();
         _code += "]";
+        break;
+    case Syntax::DOUBLE_SQUARE_BRACKETS:
+        beginLine();
+        _code += "]]";
         break;
     }
     if (semicolon)
@@ -317,16 +326,18 @@ void ShaderStage::addBlock(const string& str, GenContext& context)
 
 void ShaderStage::addInclude(const string& file, GenContext& context)
 {
-    const string path = context.resolveSourceFile(file);
+    string modifiedFile = file;
+    tokenSubstitution(context.getShaderGenerator().getTokenSubstitutions(), modifiedFile);
+    FilePath resolvedFile = context.resolveSourceFile(modifiedFile);
 
-    if (!_includes.count(path))
+    if (!_includes.count(resolvedFile))
     {
-        string content;
-        if (!readFile(path, content))
+        string content = readFile(resolvedFile);
+        if (content.empty())
         {
             throw ExceptionShaderGenError("Could not find include file: '" + file + "'");
         }
-        _includes.insert(path);
+        _includes.insert(resolvedFile);
         addBlock(content, context);
     }
 }

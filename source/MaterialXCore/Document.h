@@ -12,9 +12,7 @@
 #include <MaterialXCore/Library.h>
 
 #include <MaterialXCore/Look.h>
-#include <MaterialXCore/Material.h>
 #include <MaterialXCore/Node.h>
-#include <MaterialXCore/Variant.h>
 
 namespace MaterialX
 {
@@ -60,12 +58,11 @@ class Document : public GraphElement
     /// The contents of the library document are copied into this one, and
     /// are assigned the source URI of the library.
     /// @param library The library document to be imported.
-    /// @param copyOptions An optional pointer to a CopyOptions object.
-    ///    If provided, then the given options will affect the behavior of the
-    ///    import function.  Defaults to a null pointer.
-    void importLibrary(const ConstDocumentPtr& library, const CopyOptions* copyOptions = nullptr);
+    void importLibrary(const ConstDocumentPtr& library);
 
-    /// @}
+    /// Get a list of source URI's referenced by the document
+    StringSet getReferencedSourceUris() const;
+
     /// @name NodeGraph Elements
     /// @{
 
@@ -103,38 +100,6 @@ class Document : public GraphElement
     vector<PortElementPtr> getMatchingPorts(const string& nodeName) const;
 
     /// @}
-    /// @name Material Elements
-    /// @{
-
-    /// Add a Material to the document.
-    /// @param name The name of the new Material.
-    ///     If no name is specified, then a unique name will automatically be
-    ///     generated.
-    /// @return A shared pointer to the new Material.
-    MaterialPtr addMaterial(const string& name = EMPTY_STRING)
-    {
-        return addChild<Material>(name);
-    }
-
-    /// Return the Material, if any, with the given name.
-    MaterialPtr getMaterial(const string& name) const
-    {
-        return getChildOfType<Material>(name);
-    }
-
-    /// Return a vector of all Material elements in the document.
-    vector<MaterialPtr> getMaterials() const
-    {
-        return getChildrenOfType<Material>();
-    }
-
-    /// Remove the Material, if any, with the given name.
-    void removeMaterial(const string& name)
-    {
-        removeChildOfType<Material>(name);
-    }
-
-    /// @}
     /// @name GeomInfo Elements
     /// @{
 
@@ -169,8 +134,8 @@ class Document : public GraphElement
         removeChildOfType<GeomInfo>(name);
     }
 
-    /// Return the value of a geometric attribute for the given geometry string.
-    ValuePtr getGeomAttrValue(const string& geomAttrName, const string& geom = UNIVERSAL_GEOM_NAME) const;
+    /// Return the value of a geometric property for the given geometry string.
+    ValuePtr getGeomPropValue(const string& geomPropName, const string& geom = UNIVERSAL_GEOM_NAME) const;
 
     /// @}
     /// @name GeomPropDef Elements
@@ -235,6 +200,38 @@ class Document : public GraphElement
     void removeLook(const string& name)
     {
         removeChildOfType<Look>(name);
+    }
+
+    /// @}
+    /// @name LookGroup Elements
+    /// @{
+
+    /// Add a LookGroup to the document.
+    /// @param name The name of the new LookGroup.
+    ///     If no name is specified, then a unique name will automatically be
+    ///     generated.
+    /// @return A shared pointer to the new LookGroup.
+    LookGroupPtr addLookGroup(const string& name = EMPTY_STRING)
+    {
+        return addChild<LookGroup>(name);
+    }
+
+    /// Return the LookGroup, if any, with the given name.
+    LookGroupPtr getLookGroup(const string& name) const
+    {
+        return getChildOfType<LookGroup>(name);
+    }
+
+    /// Return a vector of all LookGroup elements in the document.
+    vector<LookGroupPtr> getLookGroups() const
+    {
+        return getChildrenOfType<LookGroup>();
+    }
+
+    /// Remove the LookGroup, if any, with the given name.
+    void removeLookGroup(const string& name)
+    {
+        removeChildOfType<LookGroup>(name);
     }
 
     /// @}
@@ -310,6 +307,8 @@ class Document : public GraphElement
     ///     If no name is specified, then a unique name will automatically be
     ///     generated.
     /// @param type An optional type string.
+    ///     If specified, then the new NodeDef will be assigned an Output of
+    ///     the given type.
     /// @param node An optional node string.
     /// @return A shared pointer to the new NodeDef.
     NodeDefPtr addNodeDef(const string& name = EMPTY_STRING,
@@ -317,13 +316,29 @@ class Document : public GraphElement
                           const string& node = EMPTY_STRING)
     {
         NodeDefPtr child = addChild<NodeDef>(name);
-        child->setType(type);
+        if (!type.empty() && type != MULTI_OUTPUT_TYPE_STRING)
+        {
+            child->addOutput("out", type);
+        }
         if (!node.empty())
         {
             child->setNodeString(node);
         }
         return child;
     }
+
+    /// Create a NodeDef declaration which is based on a NodeGraph.
+    /// @param nodeGraph NodeGraph used to create NodeDef
+    /// @param nodeDefName Declaration name 
+    /// @param node Node type for the new declaration
+    /// @param version Version for the new declaration
+    /// @param isDefaultVersion If a version is specified is thie definition the default version
+    /// @param newGraphName Make a copy of this NodeGraph with the given name if a non-empty name is provided. Otherwise
+    ///        modify the existing NodeGraph. Default value is an empty string.
+    /// @param nodeGroup Optional node group for the new declaration. The Default value is an emptry string.
+    /// @return New declaration if successful.
+    NodeDefPtr addNodeDefFromGraph(const NodeGraphPtr nodeGraph, const string& nodeDefName, const string& node, const string& version,
+                                   bool isDefaultVersion, const string& nodeGroup, string& newGraphName);
 
     /// Return the NodeDef, if any, with the given name.
     NodeDefPtr getNodeDef(const string& name) const
@@ -345,6 +360,70 @@ class Document : public GraphElement
 
     /// Return a vector of all NodeDef elements that match the given node name.
     vector<NodeDefPtr> getMatchingNodeDefs(const string& nodeName) const;
+
+    /// @}
+    /// @name AttributeDef Elements
+    /// @{
+
+    /// Add an AttributeDef to the document.
+    /// @param name The name of the new AttributeDef.
+    ///     If no name is specified, then a unique name will automatically be
+    ///     generated.
+    /// @return A shared pointer to the new AttributeDef.
+    AttributeDefPtr addAttributeDef(const string& name = EMPTY_STRING)
+    {
+        return addChild<AttributeDef>(name);
+    }
+
+    /// Return the AttributeDef, if any, with the given name.
+    AttributeDefPtr getAttributeDef(const string& name) const
+    {
+        return getChildOfType<AttributeDef>(name);
+    }
+
+    /// Return a vector of all AttributeDef elements in the document.
+    vector<AttributeDefPtr> getAttributeDefs() const
+    {
+        return getChildrenOfType<AttributeDef>();
+    }
+
+    /// Remove the AttributeDef, if any, with the given name.
+    void removeAttributeDef(const string& name)
+    {
+        removeChildOfType<AttributeDef>(name);
+    }
+
+    /// @}
+    /// @name TargetDef Elements
+    /// @{
+
+    /// Add an TargetDef to the document.
+    /// @param name The name of the new TargetDef.
+    ///     If no name is specified, then a unique name will automatically be
+    ///     generated.
+    /// @return A shared pointer to the new TargetDef.
+    TargetDefPtr addTargetDef(const string& name = EMPTY_STRING)
+    {
+        return addChild<TargetDef>(name);
+    }
+
+    /// Return the AttributeDef, if any, with the given name.
+    TargetDefPtr getTargetDef(const string& name) const
+    {
+        return getChildOfType<TargetDef>(name);
+    }
+
+    /// Return a vector of all TargetDef elements in the document.
+    vector<TargetDefPtr> getTargetDefs() const
+    {
+        return getChildrenOfType<TargetDef>();
+    }
+
+    /// Remove the TargetDef, if any, with the given name.
+    void removeTargetDef(const string& name)
+    {
+        removeChildOfType<TargetDef>(name);
+    }
 
     /// @}
     /// @name PropertySet Elements
@@ -448,6 +527,68 @@ class Document : public GraphElement
     vector<InterfaceElementPtr> getMatchingImplementations(const string& nodeDef) const;
 
     /// @}
+    /// @name UnitDef Elements
+    /// @{
+
+    UnitDefPtr addUnitDef(const string& name)
+    {
+        if (name.empty())
+        {
+            throw Exception("A unit definition name cannot be empty");
+        }
+        return addChild<UnitDef>(name);
+    }
+
+    /// Return the UnitDef, if any, with the given name.
+    UnitDefPtr getUnitDef(const string& name) const
+    {
+        return getChildOfType<UnitDef>(name);
+    }
+
+    /// Return a vector of all Member elements in the TypeDef.
+    vector<UnitDefPtr> getUnitDefs() const
+    {
+        return getChildrenOfType<UnitDef>();
+    }
+
+    /// Remove the UnitDef, if any, with the given name.
+    void removeUnitDef(const string& name)
+    {
+        removeChildOfType<UnitDef>(name);
+    }    
+
+    /// @}
+    /// @name UnitTypeDef Elements
+    /// @{
+
+    UnitTypeDefPtr addUnitTypeDef(const string& name)
+    {
+        if (name.empty())
+        {
+            throw Exception("A unit type definition name cannot be empty");
+        }
+        return addChild<UnitTypeDef>(name);
+    }
+
+    /// Return the UnitTypeDef, if any, with the given name.
+    UnitTypeDefPtr getUnitTypeDef(const string& name) const
+    {
+        return getChildOfType<UnitTypeDef>(name);
+    }
+
+    /// Return a vector of all UnitTypeDef elements in the document.
+    vector<UnitTypeDefPtr> getUnitTypeDefs() const
+    {
+        return getChildrenOfType<UnitTypeDef>();
+    }
+
+    /// Remove the UnitTypeDef, if any, with the given name.
+    void removeUnitTypeDef(const string& name)
+    {
+        removeChildOfType<UnitTypeDef>(name);
+    }
+
+    /// @}
     /// @name Version
     /// @{
 
@@ -455,7 +596,7 @@ class Document : public GraphElement
     std::pair<int, int> getVersionIntegers() const override;
 
     /// Upgrade the content of this document from earlier supported versions to
-    /// the library version.  Documents from future versions are left unmodified.
+    /// the library version.
     void upgradeVersion();
 
     /// @}
@@ -514,44 +655,11 @@ class Document : public GraphElement
     bool validate(string* message = nullptr) const override;
 
     /// @}
-    /// @name Callbacks
+    /// @name Utility
     /// @{
 
-    /// Called when an element is added to the element tree.
-    virtual void onAddElement(ElementPtr parent, ElementPtr elem);
-
-    /// Called when an element is removed from the element tree.
-    virtual void onRemoveElement(ElementPtr parent, ElementPtr elem);
-
-    /// Called when an attribute of an element is set to a new value.
-    virtual void onSetAttribute(ElementPtr elem, const string& attrib, const string& value);
-
-    /// Called when an attribute of an element is removed.
-    virtual void onRemoveAttribute(ElementPtr elem, const string& attrib);
-
-    /// Called when content is copied into an element.
-    virtual void onCopyContent(ElementPtr elem);
-
-    /// Called when content is cleared from an element.
-    virtual void onClearContent(ElementPtr elem);
-
-    /// Called when data is read into the current document.
-    virtual void onRead() { }
-
-    /// Called when data is written from the current document.
-    virtual void onWrite() { }
-
-    /// Called before a set of document updates is performed.
-    virtual void onBeginUpdate() { }
-
-    /// Called after a set of document updates is performed.
-    virtual void onEndUpdate() { }
-
-    /// Enable observer callbacks		
-    virtual void enableCallbacks() { }
-    
-    /// Disable observer callbacks
-    virtual void disableCallbacks() { }
+    /// Invalidate cached data for optimized lookups within the given document.
+    void invalidateCache();
 
     /// @}
 
@@ -563,50 +671,6 @@ class Document : public GraphElement
   private:
     class Cache;
     std::unique_ptr<Cache> _cache;
-};
-
-/// @class ScopedUpdate
-/// An RAII class for Document updates.
-///
-/// A ScopedUpdate instance calls Document::onBeginUpdate when created, and
-/// Document::onEndUpdate when destroyed.
-class ScopedUpdate
-{
-  public:
-    explicit ScopedUpdate(DocumentPtr doc) :
-        _doc(doc)
-    {
-        _doc->onBeginUpdate();
-    }
-    ~ScopedUpdate()
-    {
-        _doc->onEndUpdate();
-    }
-
-  private:
-    DocumentPtr _doc;
-};
-
-/// @class ScopedDisableCallbacks
-/// An RAII class for disabling Document callbacks.
-///
-/// A ScopedDisableCallbacks instance calls Document::disableCallbacks() when
-/// created, and Document::enableCallbacks when destroyed.
-class ScopedDisableCallbacks
-{
-  public:
-    explicit ScopedDisableCallbacks(DocumentPtr doc) :
-        _doc(doc)
-    {
-        _doc->disableCallbacks();
-    }
-    ~ScopedDisableCallbacks()
-    {
-        _doc->enableCallbacks();
-    }
-
-  private:
-    DocumentPtr _doc;
 };
 
 /// Create a new Document.

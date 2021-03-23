@@ -39,16 +39,18 @@ void ColorManagementSystem::loadLibrary(DocumentPtr document)
 
 bool ColorManagementSystem::supportsTransform(const ColorSpaceTransform& transform) const
 {
-    const string implName = getImplementationName(transform);
-    ImplementationPtr impl = _document->getImplementation(implName);
+    if (!_document)
+    {
+        throw ExceptionShaderGenError("No library loaded for color management system");
+    }
+    ImplementationPtr impl = getImplementation(transform);
     return impl != nullptr;
 }
 
 ShaderNodePtr ColorManagementSystem::createNode(const ShaderGraph* parent, const ColorSpaceTransform& transform, const string& name, 
                                                 GenContext& context) const
 {
-    const string implName = getImplementationName(transform);
-    ImplementationPtr impl = _document->getImplementation(implName);
+    ImplementationPtr impl = getImplementation(transform);
     if (!impl)
     {
         throw ExceptionShaderGenError("No implementation found for transform: ('" + transform.sourceSpace + "', '" + transform.targetSpace + "').");
@@ -56,17 +58,16 @@ ShaderNodePtr ColorManagementSystem::createNode(const ShaderGraph* parent, const
 
     // Check if it's created and cached already,
     // otherwise create and cache it.
-    ShaderNodeImplPtr nodeImpl = context.findNodeImplementation(implName);
+    ShaderNodeImplPtr nodeImpl = context.findNodeImplementation(impl->getName());
     if (!nodeImpl)
     {
         nodeImpl = SourceCodeNode::create();
         nodeImpl->initialize(*impl, context);
-        context.addNodeImplementation(implName, nodeImpl);
+        context.addNodeImplementation(impl->getName(), nodeImpl);
     }
 
     // Create the node.
-    ShaderNodePtr shaderNode = ShaderNode::create(parent, name, nodeImpl, 
-        ShaderNode::Classification::TEXTURE | ShaderNode::Classification::COLOR_SPACE_TRANSFORM);
+    ShaderNodePtr shaderNode = ShaderNode::create(parent, name, nodeImpl, ShaderNode::Classification::TEXTURE);
 
     // Create ports on the node.
     ShaderInput* input = shaderNode->addInput("in", transform.type);

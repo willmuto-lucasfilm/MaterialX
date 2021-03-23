@@ -3,45 +3,39 @@
 // All rights reserved.  See LICENSE.txt for license.
 //
 
+#include <MaterialXRender/LightHandler.h>
+
 #include <MaterialXGenShader/HwShaderGenerator.h>
 #include <MaterialXGenShader/GenContext.h>
-#include <MaterialXRender/LightHandler.h>
 
 namespace MaterialX
 {
-
-LightHandler::LightHandler()
-{
-}
-
-LightHandler::~LightHandler()
-{
-}
 
 void LightHandler::addLightSource(NodePtr node)
 {
     _lightSources.push_back(node);
 }
 
-void LightHandler::mapNodeDefToIdentiers(const std::vector<NodePtr>& nodes,
-                                           std::unordered_map<string, unsigned int>& ids)
+LightIdMap LightHandler::computeLightIdMap(const vector<NodePtr>& nodes)
 {
+    std::unordered_map<string, unsigned int> idMap;
     unsigned int id = 1;
-    for (auto node : nodes)
+    for (const auto& node : nodes)
     {
         auto nodedef = node->getNodeDef();
         if (nodedef)
         {
             const string& name = nodedef->getName();
-            if (!ids.count(name))
+            if (!idMap.count(name))
             {
-                ids[name] = id++;
+                idMap[name] = id++;
             }
         }
     }
+    return idMap;
 }
 
-void LightHandler::findLights(DocumentPtr doc, std::vector<NodePtr>& lights)
+void LightHandler::findLights(DocumentPtr doc, vector<NodePtr>& lights)
 {
     lights.clear();
     for (NodePtr node : doc->getNodes())
@@ -54,7 +48,7 @@ void LightHandler::findLights(DocumentPtr doc, std::vector<NodePtr>& lights)
     }
 }
 
-void LightHandler::registerLights(DocumentPtr doc, const std::vector<NodePtr>& lights, GenContext& context)
+void LightHandler::registerLights(DocumentPtr doc, const vector<NodePtr>& lights, GenContext& context)
 {
     // Clear context light user data which is set when bindLightShader() 
     // is called. This is necessary in case the light types have already been
@@ -64,8 +58,8 @@ void LightHandler::registerLights(DocumentPtr doc, const std::vector<NodePtr>& l
     if (!lights.empty())
     {
         // Create a list of unique nodedefs and ids for them
-        mapNodeDefToIdentiers(lights, _lightIdentifierMap);
-        for (auto id : _lightIdentifierMap)
+        _lightIdentifierMap = computeLightIdMap(lights);
+        for (const auto& id : _lightIdentifierMap)
         {
             NodeDefPtr nodeDef = doc->getNodeDef(id.first);
             if (nodeDef)

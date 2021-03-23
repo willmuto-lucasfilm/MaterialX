@@ -19,17 +19,15 @@ namespace MaterialX
 extern const string COLOR_SEMANTIC;
 extern const string SHADER_SEMANTIC;
 
-extern const string TEXTURE_NODE_GROUP;
-extern const string PROCEDURAL_NODE_GROUP;
-extern const string GEOMETRIC_NODE_GROUP;
-extern const string ADJUSTMENT_NODE_GROUP;
-extern const string CONDITIONAL_NODE_GROUP;
-
 class NodeDef;
 class Implementation;
 class TypeDef;
+class TargetDef;
 class Member;
-class ShaderRef;
+class Unit;
+class UnitDef;
+class UnitTypeDef;
+class AttributeDef;
 
 /// A shared pointer to a NodeDef
 using NodeDefPtr = shared_ptr<NodeDef>;
@@ -46,16 +44,41 @@ using TypeDefPtr = shared_ptr<TypeDef>;
 /// A shared pointer to a const TypeDef
 using ConstTypeDefPtr = shared_ptr<const TypeDef>;
 
+/// A shared pointer to a TargetDef
+using TargetDefPtr = shared_ptr<TargetDef>;
+/// A shared pointer to a const TargetDef
+using ConstTargetDefPtr = shared_ptr<const TargetDef>;
+
 /// A shared pointer to a Member
 using MemberPtr = shared_ptr<Member>;
 /// A shared pointer to a const Member
 using ConstMemberPtr = shared_ptr<const Member>;
 
+/// A shared pointer to a Unit
+using UnitPtr = shared_ptr<Unit>;
+/// A shared pointer to a const Unit
+using ConstUnitPtr = shared_ptr<const Unit>;
+
+/// A shared pointer to a UnitDef
+using UnitDefPtr = shared_ptr<UnitDef>;
+/// A shared pointer to a const UnitDef
+using ConstUnitDefPtr = shared_ptr<const UnitDef>;
+
+/// A shared pointer to a UnitTypeDef
+using UnitTypeDefPtr = shared_ptr<UnitTypeDef>;
+/// A shared pointer to a const UnitTypeDef
+using ConstUnitTypeDefPtr = shared_ptr<const UnitTypeDef>;
+
+/// A shared pointer to an AttributeDef
+using AttributeDefPtr = shared_ptr<AttributeDef>;
+/// A shared pointer to a const AttributeDef
+using AttributeDefDefPtr = shared_ptr<const AttributeDef>;
+
 /// @class NodeDef
 /// A node definition element within a Document.
 ///
 /// A NodeDef provides the declaration of a node interface, which may then
-/// be instantiated as a Node or a ShaderRef.
+/// be instantiated as a Node.
 class NodeDef : public InterfaceElement
 {
   public:
@@ -64,8 +87,6 @@ class NodeDef : public InterfaceElement
     {
     }
     virtual ~NodeDef() { }
-
-    using ShaderRefPtr = shared_ptr<ShaderRef>;
 
     /// @name Node String
     /// @{
@@ -87,6 +108,9 @@ class NodeDef : public InterfaceElement
     {
         return getAttribute(NODE_ATTRIBUTE);
     }
+
+    /// Return the element's output type.
+    const string& getType() const override;
 
     /// @}
     /// @name Node Group
@@ -115,23 +139,13 @@ class NodeDef : public InterfaceElement
     /// @{
 
     /// Return the first implementation for this nodedef, optionally filtered
-    /// by the given target and language names.
+    /// by the given target name.
     /// @param target An optional target name, which will be used to filter
-    ///    the implementations that are considered.
-    /// @param language An optional language name, which will be used to filter
     ///    the implementations that are considered.
     /// @return An implementation for this nodedef, or an empty shared pointer
     ///    if none was found.  Note that a node implementation may be either
     ///    an Implementation element or a NodeGraph element.
-    InterfaceElementPtr getImplementation(const string& target = EMPTY_STRING, 
-                                          const string& language = EMPTY_STRING) const;
-
-    /// @}
-    /// @name Shader References
-    /// @{
-
-    /// Return all ShaderRef elements that instantiate this NodeDef.
-    vector<ShaderRefPtr> getInstantiatingShaderRefs() const;
+    InterfaceElementPtr getImplementation(const string& target = EMPTY_STRING) const;
 
     /// @}
     /// @name Validation
@@ -145,10 +159,10 @@ class NodeDef : public InterfaceElement
     /// @name Utility
     /// @{
 
-    /// Return true if the given element is version compatible with this
+    /// Return true if the given version string is compatible with this
     /// NodeDef.  This may be used to test, for example, whether a NodeDef
     /// and Node may be used together.
-    bool isVersionCompatible(ConstElementPtr elem) const;
+    bool isVersionCompatible(const string& version) const;
 
     /// Return the first declaration of this interface, optionally filtered
     ///    by the given target name.
@@ -160,6 +174,14 @@ class NodeDef : public InterfaceElement
     static const string CATEGORY;
     static const string NODE_ATTRIBUTE;
     static const string NODE_GROUP_ATTRIBUTE;
+
+    static const string TEXTURE_NODE_GROUP;
+    static const string PROCEDURAL_NODE_GROUP;
+    static const string GEOMETRIC_NODE_GROUP;
+    static const string ADJUSTMENT_NODE_GROUP;
+    static const string CONDITIONAL_NODE_GROUP;
+    static const string ORGANIZATION_NODE_GROUP;
+    static const string TRANSLATION_NODE_GROUP;
 };
 
 /// @class Implementation
@@ -221,28 +243,6 @@ class Implementation : public InterfaceElement
     }
 
     /// @}
-    /// @name Language String
-    /// @{
-
-    /// Set the language string for the Implementation.
-    void setLanguage(const string& language)
-    {
-        setAttribute(LANGUAGE_ATTRIBUTE, language);
-    }
-
-    /// Return true if the given Implementation has a language string.
-    bool hasLanguage() const
-    {
-        return hasAttribute(LANGUAGE_ATTRIBUTE);
-    }
-
-    /// Return the language string for the Implementation.
-    const string& getLanguage() const
-    {
-        return getAttribute(LANGUAGE_ATTRIBUTE);
-    }
-
-    /// @}
     /// @name NodeDef References
     /// @{
 
@@ -251,6 +251,14 @@ class Implementation : public InterfaceElement
 
     /// Return the NodeDef element referenced by the Implementation.
     NodeDefPtr getNodeDef() const;
+
+    /// @}
+    /// @name Validation
+    /// @{
+
+    /// Validate that the given element tree, including all descendants, is
+    /// consistent with the MaterialX specification.
+    bool validate(string* message = nullptr) const override;
 
     /// @}
     /// @name Utility
@@ -266,7 +274,6 @@ class Implementation : public InterfaceElement
     static const string CATEGORY;
     static const string FILE_ATTRIBUTE;
     static const string FUNCTION_ATTRIBUTE;
-    static const string LANGUAGE_ATTRIBUTE;
 };
 
 /// @class TypeDef
@@ -363,6 +370,27 @@ class TypeDef : public Element
     static const string CONTEXT_ATTRIBUTE;
 };
 
+/// @class TargetDef
+/// A definition of an implementation target.
+class TargetDef : public TypedElement
+{
+  public:
+    TargetDef(ElementPtr parent, const string& name) :
+        TypedElement(parent, CATEGORY, name)
+    {
+    }
+    virtual ~TargetDef() { }
+
+    /// Return a vector of target names that is matching this targetdef
+    /// either by itself of by its inheritance.
+    /// The vector is ordered by priority starting with this targetdef
+    /// itself and then upwards in the inheritance hierarchy.
+    StringVec getMatchingTargets() const;
+
+  public:
+    static const string CATEGORY;
+};
+
 /// @class Member
 /// A member element within a TypeDef.
 class Member : public TypedElement
@@ -376,6 +404,251 @@ class Member : public TypedElement
 
   public:
     static const string CATEGORY;
+};
+
+/// @class Unit
+/// A unit declaration within a UnitDef.
+class Unit : public Element
+{
+  public:
+      Unit(ElementPtr parent, const string& name) :
+          Element(parent, CATEGORY, name)
+      {
+      }
+      virtual ~Unit() { }
+
+  public:
+    static const string CATEGORY;
+};
+
+/// @class UnitDef
+/// A unit definition element within a Document.
+class UnitDef : public Element
+{
+  public:
+    UnitDef(ElementPtr parent, const string& name) :
+        Element(parent, CATEGORY, name)
+    {
+    }
+    virtual ~UnitDef() { }
+
+    /// @name Unit Type methods
+    /// @{
+
+    /// Set the element's unittype string.
+    void setUnitType(const string& type)
+    {
+        setAttribute(UNITTYPE_ATTRIBUTE, type);
+    }
+
+    /// Return true if the given element has a unittype string.
+    bool hasUnitType() const
+    {
+        return hasAttribute(UNITTYPE_ATTRIBUTE);
+    }
+
+    /// Return the element's type string.
+    const string& getUnitType() const
+    {
+        return getAttribute(UNITTYPE_ATTRIBUTE);
+    }
+
+    /// @}
+    /// @name Unit methods
+    /// @{
+
+    /// Add a Unit to the UnitDef.
+    /// @param name The name of the new Unit. An exception is thrown
+    /// if the name provided is an empty string.
+    /// @return A shared pointer to the new Unit.
+    UnitPtr addUnit(const string& name)
+    {
+        if (name.empty())
+        {
+            throw Exception("A unit definition name cannot be empty");
+        }
+        return addChild<Unit>(name);
+    }
+
+    /// Return the Unit, if any, with the given name.
+    UnitPtr getUnit(const string& name) const
+    {
+        return getChildOfType<Unit>(name);
+    }
+
+    /// Return a vector of all Unit elements in the UnitDef.
+    vector<UnitPtr> getUnits() const
+    {
+        return getChildrenOfType<Unit>();
+    }
+
+    /// Remove the Unit, if any, with the given name.
+    void removeUnit(const string& name)
+    {
+        removeChildOfType<Unit>(name);
+    }
+
+    /// @}
+
+  public:
+    static const string CATEGORY;
+    static const string UNITTYPE_ATTRIBUTE;
+};
+
+/// @class UnitTypeDef
+/// A unit type definition element within a Document.
+class UnitTypeDef : public Element
+{
+  public:
+    UnitTypeDef(ElementPtr parent, const string& name) :
+        Element(parent, CATEGORY, name)
+    {
+    }
+    virtual ~UnitTypeDef() { }
+
+    /// Find all UnitDefs for the UnitTypeDef
+    vector<UnitDefPtr> getUnitDefs() const;
+
+  public:
+    static const string CATEGORY;
+};
+
+/// @class AttributeDef
+/// An attribute definition element within a Document.
+class AttributeDef : public TypedElement
+{
+  public:
+    AttributeDef(ElementPtr parent, const string& name) :
+        TypedElement(parent, CATEGORY, name)
+    {
+    }
+    virtual ~AttributeDef() { }
+
+    /// @name Attribute name
+    /// @{
+
+    /// Set the element's attrname string.
+    void setAttrName(const string& name)
+    {
+        setAttribute(ATTRNAME_ATTRIBUTE, name);
+    }
+
+    /// Return true if this element has an attrname string.
+    bool hasAttrName() const
+    {
+        return hasAttribute(ATTRNAME_ATTRIBUTE);
+    }
+
+    /// Return the element's attrname string.
+    const string& getAttrName() const
+    {
+        return getAttribute(ATTRNAME_ATTRIBUTE);
+    }
+
+    /// @}
+    /// @name Value String
+    /// @{
+
+    /// Set the value string of an element.
+    void setValueString(const string& value)
+    {
+        setAttribute(VALUE_ATTRIBUTE, value);
+    }
+
+    /// Return true if the given element has a value string.
+    bool hasValueString() const
+    {
+        return hasAttribute(VALUE_ATTRIBUTE);
+    }
+
+    /// Get the value string of a element.
+    const string& getValueString() const
+    {
+        return getAttribute(VALUE_ATTRIBUTE);
+    }
+
+    /// @}
+    /// @name Typed Value
+    /// @{
+
+    /// Set the typed value of an element.
+    template<class T> void setValue(const T& value, const string& type = EMPTY_STRING)
+    {
+        setType(!type.empty() ? type : getTypeString<T>());
+        setValueString(toValueString(value));
+    }
+
+    /// Set the typed value of an element from a C-style string.
+    void setValue(const char* value, const string& type = EMPTY_STRING)
+    {
+        setValue(value ? string(value) : EMPTY_STRING, type);
+    }
+
+    /// Return true if the element possesses a typed value.
+    bool hasValue() const
+    {
+        return hasAttribute(VALUE_ATTRIBUTE);
+    }
+
+    /// Return the typed value of an element as a generic value object, which
+    /// may be queried to access its data.
+    ///
+    /// @return A shared pointer to the typed value of this element, or an
+    ///    empty shared pointer if no value is present.
+    ValuePtr getValue() const
+    {
+        if (!hasValue())
+            return ValuePtr();
+        return Value::createValueFromStrings(getValueString(), getType());
+    }
+
+    /// @}
+    /// @name Elements
+    /// @{
+
+    /// Set the element's elements string.
+    void setElements(const string& elements)
+    {
+        setAttribute(ELEMENTS_ATTRIBUTE, elements);
+    }
+
+    /// Return true if the element has an elements string.
+    bool hasElements() const
+    {
+        return hasAttribute(ELEMENTS_ATTRIBUTE);
+    }
+
+    /// Return the element's elements string.
+    const string& getElements() const
+    {
+        return getAttribute(ELEMENTS_ATTRIBUTE);
+    }
+
+    /// @}
+    /// @name Exportable
+    /// @{
+
+    /// Set the exportable boolean for the element.
+    void setExportable(bool value)
+    {
+        setTypedAttribute<bool>(EXPORTABLE_ATTRIBUTE, value);
+    }
+
+    /// Return the exportable boolean for the element.
+    /// Defaults to false if exportable is not set.
+    bool getExportable() const
+    {
+        return getTypedAttribute<bool>(EXPORTABLE_ATTRIBUTE);
+    }
+
+    /// @}
+
+  public:
+    static const string CATEGORY;
+    static const string ATTRNAME_ATTRIBUTE;
+    static const string VALUE_ATTRIBUTE;
+    static const string ELEMENTS_ATTRIBUTE;
+    static const string EXPORTABLE_ATTRIBUTE;
 };
 
 } // namespace MaterialX

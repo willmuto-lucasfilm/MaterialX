@@ -5,6 +5,7 @@
 
 #include <MaterialXRender/Util.h>
 
+#include <MaterialXCore/Util.h>
 #include <MaterialXGenShader/Shader.h>
 #include <MaterialXGenShader/ShaderGenerator.h>
 
@@ -13,26 +14,20 @@ namespace MaterialX
 
 ShaderPtr createShader(const string& shaderName, GenContext& context, ElementPtr elem)
 {
-    if (!elem)
-    {
-        return nullptr;
-    }
-
-    context.getOptions().hwTransparency = isTransparentSurface(elem, context.getShaderGenerator());
     return context.getShaderGenerator().generate(shaderName, elem, context);
 }
 
 ShaderPtr createConstantShader(GenContext& context,
-                            DocumentPtr stdLib,
-                            const string& shaderName,
-                            const Color3& color)
+                               DocumentPtr stdLib,
+                               const string& shaderName,
+                               const Color3& color)
 {
     // Construct the constant color nodegraph
     DocumentPtr doc = createDocument();
     doc->importLibrary(stdLib);
     NodeGraphPtr nodeGraph = doc->addNodeGraph();
     NodePtr constant = nodeGraph->addNode("constant");
-    constant->setParameterValue("value", color);
+    constant->setInputValue("value", color);
     OutputPtr output = nodeGraph->addOutput();
     output->setConnectedNode(constant);
 
@@ -40,7 +35,71 @@ ShaderPtr createConstantShader(GenContext& context,
     return createShader(shaderName, context, output);
 }
 
-unsigned int getUIProperties(ValueElementPtr nodeDefElement, UIProperties& uiProperties)
+ShaderPtr createDepthShader(GenContext& context,
+                            DocumentPtr stdLib,
+                            const string& shaderName)
+{
+    // Construct a dummy nodegraph.
+    DocumentPtr doc = createDocument();
+    doc->importLibrary(stdLib);
+    NodeGraphPtr nodeGraph = doc->addNodeGraph();
+    NodePtr constant = nodeGraph->addNode("constant");
+    OutputPtr output = nodeGraph->addOutput();
+    output->setConnectedNode(constant);
+
+    // Generate the shader
+    GenContext depthContext = context;
+    depthContext.getOptions().hwWriteDepthMoments = true;
+    ShaderPtr shader = createShader(shaderName, depthContext, output);
+
+    return shader;
+}
+
+ShaderPtr createAlbedoTableShader(GenContext& context,
+                                  DocumentPtr stdLib,
+                                  const string& shaderName)
+{
+    // Construct a dummy nodegraph.
+    DocumentPtr doc = createDocument();
+    doc->importLibrary(stdLib);
+    NodeGraphPtr nodeGraph = doc->addNodeGraph();
+    NodePtr constant = nodeGraph->addNode("constant");
+    OutputPtr output = nodeGraph->addOutput();
+    output->setConnectedNode(constant);
+
+    // Generate the shader
+    GenContext tableContext = context;
+    tableContext.getOptions().hwWriteAlbedoTable = true;
+    ShaderPtr shader = createShader(shaderName, tableContext, output);
+
+    return shader;
+}
+
+ShaderPtr createBlurShader(GenContext& context,
+                           DocumentPtr stdLib,
+                           const string& shaderName,
+                           const string& filterType,
+                           float filterSize)
+{
+    // Construct the blur nodegraph
+    DocumentPtr doc = createDocument();
+    doc->importLibrary(stdLib);
+    NodeGraphPtr nodeGraph = doc->addNodeGraph();
+    NodePtr imageNode = nodeGraph->addNode("image", "image");
+    NodePtr blurNode = nodeGraph->addNode("blur", "blur");
+    blurNode->setConnectedNode("in", imageNode);
+    blurNode->setInputValue("size", filterSize);
+    blurNode->setInputValue("filtertype", filterType);
+    OutputPtr output = nodeGraph->addOutput();
+    output->setConnectedNode(blurNode);
+
+    // Generate the shader
+    GenContext blurContext = context;
+    blurContext.getOptions().fileTextureVerticalFlip = false;
+    return createShader(shaderName, blurContext, output);
+}
+
+unsigned int getUIProperties(ConstValueElementPtr nodeDefElement, UIProperties& uiProperties)
 {
     if (!nodeDefElement)
     {
@@ -56,13 +115,13 @@ unsigned int getUIProperties(ValueElementPtr nodeDefElement, UIProperties& uiPro
     if (!uiProperties.uiFolder.empty())
         propertyCount++;
 
-    if (nodeDefElement->isA<Parameter>())
+    if (nodeDefElement->getIsUniform())
     {
         string enumString = nodeDefElement->getAttribute(ValueElement::ENUM_ATTRIBUTE);
         if (!enumString.empty())
         {
             uiProperties.enumeration = splitString(enumString, ",");
-            if (uiProperties.enumeration.size())
+            if (!uiProperties.enumeration.empty())
                 propertyCount++;
         }
 
@@ -99,6 +158,10 @@ unsigned int getUIProperties(ValueElementPtr nodeDefElement, UIProperties& uiPro
             {
                 uiProperties.enumerationValues.push_back(Value::createValue(enumerationValues));
             }
+            if (uiProperties.enumeration.size() != uiProperties.enumerationValues.size())
+            {
+                throw std::runtime_error("Every enum must have a value!");
+            }
             propertyCount++;
         }
     }
@@ -124,6 +187,47 @@ unsigned int getUIProperties(ValueElementPtr nodeDefElement, UIProperties& uiPro
             propertyCount++;
         }
     }
+
+    const string& uiSoftMinString = nodeDefElement->getAttribute(ValueElement::UI_SOFT_MIN_ATTRIBUTE);
+    if (!uiSoftMinString.empty())
+    {
+        ValuePtr value = Value::createValueFromStrings(uiSoftMinString, nodeDefElement->getType());
+        if (value)
+        {
+            uiProperties.uiSoftMin = value;
+            propertyCount++;
+        }
+    }
+
+    const string& uiSoftMaxString = nodeDefElement->getAttribute(ValueElement::UI_SOFT_MAX_ATTRIBUTE);
+    if (!uiSoftMaxString.empty())
+    {
+        ValuePtr value = Value::createValueFromStrings(uiSoftMaxString, nodeDefElement->getType());
+        if (value)
+        {
+            uiProperties.uiSoftMax = value;
+            propertyCount++;
+        }
+    }
+
+    const string& uiStepString = nodeDefElement->getAttribute(ValueElement::UI_STEP_ATTRIBUTE);
+    if (!uiStepString.empty())
+    {
+        ValuePtr value = Value::createValueFromStrings(uiStepString, nodeDefElement->getType());
+        if (value)
+        {
+            uiProperties.uiStep = value;
+            propertyCount++;
+        }
+    }
+
+    const string& uiAdvancedString = nodeDefElement->getAttribute(ValueElement::UI_ADVANCED_ATTRIBUTE);
+    uiProperties.uiAdvanced = (uiAdvancedString == "true");
+    if (!uiAdvancedString.empty())
+    {
+        propertyCount++;
+    }
+
     return propertyCount;
 }
 
@@ -137,58 +241,86 @@ unsigned int getUIProperties(const string& path, DocumentPtr doc, const string& 
     return 0;
 }
 
-void createUIPropertyGroups(const VariableBlock& block, DocumentPtr contentDocument, TypedElementPtr materialElement,
-                          const string& pathSeparator, UIPropertyGroup& groups, UIPropertyGroup& unnamedGroups)
+void createUIPropertyGroups(ElementPtr uniformElement, DocumentPtr contentDocument, TypedElementPtr materialElement,
+                            const string& pathSeparator, UIPropertyGroup& groups,
+                            UIPropertyGroup& unnamedGroups, ShaderPort* uniform)
 {
-    for (auto uniform : block.getVariableOrder())
+    if (uniformElement && uniformElement->isA<ValueElement>())
     {
-        if (!uniform->getPath().empty() && uniform->getValue())
+        UIPropertyItem item;
+        item.variable = uniform;
+        item.value = uniformElement->asA<ValueElement>()->getValue();
+        getUIProperties(uniformElement->getNamePath(), contentDocument, EMPTY_STRING, item.ui);
+
+        string parentLabel;
+        ElementPtr parent = uniformElement->getParent();
+        if (parent && parent != contentDocument && parent != materialElement)
         {
-            ElementPtr uniformElement = contentDocument->getDescendant(uniform->getPath());
-            if (uniformElement && uniformElement->isA<ValueElement>())
+            parentLabel = parent->getNamePath();
+        }
+        if (!materialElement || parentLabel == materialElement->getAttribute(PortElement::NODE_NAME_ATTRIBUTE))
+        {
+            parentLabel.clear();
+        }
+        if (!parentLabel.empty())
+        {
+            parentLabel += pathSeparator;
+        }
+
+        if (!item.ui.uiName.empty())
+        {
+            item.label = parentLabel + item.ui.uiName;
+        }
+        if (item.label.empty())
+        {
+            item.label = parentLabel + uniformElement->getName();
+        }
+
+        if (!item.ui.uiFolder.empty())
+        {
+            groups.emplace(item.ui.uiFolder, item);
+        }
+        else
+        {
+            unnamedGroups.emplace(EMPTY_STRING, item);
+        }
+    }
+}
+
+void createUIPropertyGroups(const VariableBlock& block, DocumentPtr contentDocument, TypedElementPtr materialElement,
+                            const string& pathSeparator, UIPropertyGroup& groups, UIPropertyGroup& unnamedGroups, bool addFromDefinition)
+{
+    const vector<ShaderPort*>& blockVariables = block.getVariableOrder();
+    for (const auto& blockVariable : blockVariables)
+    {
+        const string& path = blockVariable->getPath();
+
+        if (!blockVariable->getPath().empty())
+        {
+            // Optionally add the input if it does not exist
+            ElementPtr uniformElement = contentDocument->getDescendant(path);
+            if (!uniformElement && addFromDefinition)
             {
-                UIPropertyItem item;
-                item.variable = uniform;
-                getUIProperties(uniform->getPath(), contentDocument, EMPTY_STRING, item.ui);
+                string nodePath = parentNamePath(path);
+                ElementPtr uniformParent = contentDocument->getDescendant(nodePath);
+                if (uniformParent)
+                {
+                    NodePtr uniformNode = uniformParent->asA<Node>();
+                    if (uniformNode)
+                    {
+                        StringVec pathVec = splitNamePath(path);
+                        uniformNode->addInputFromNodeDef(pathVec[pathVec.size() - 1]);
+                    }
+                }
+            }
 
-                std::string parentLabel;
-                ElementPtr parent = uniformElement->getParent();
-                if (parent && parent != contentDocument && parent != materialElement)
-                {
-                    parentLabel = parent->getNamePath();
-                }
-                if (parentLabel == materialElement->getAttribute(PortElement::NODE_NAME_ATTRIBUTE))
-                {
-                    parentLabel.clear();
-                }
-                if (!parentLabel.empty())
-                {
-                    parentLabel += pathSeparator;
-                }
-
-                if (!item.ui.uiName.empty())
-                {
-                    item.label = parentLabel + item.ui.uiName;
-                }
-                if (item.label.empty())
-                {
-                    item.label = parentLabel + uniformElement->getName();
-                }
-
-                if (!item.ui.uiFolder.empty())
-                {
-                    groups.insert(std::pair<std::string, UIPropertyItem>
-                        (item.ui.uiFolder, item));
-                }
-                else
-                {
-                    unnamedGroups.insert(std::pair<std::string, UIPropertyItem>
-                        (EMPTY_STRING, item));
-                }
+            uniformElement = contentDocument->getDescendant(path);
+            if (uniformElement && blockVariable->getValue())
+            {
+                createUIPropertyGroups(uniformElement, contentDocument, materialElement, pathSeparator, groups, unnamedGroups, blockVariable);
             }
         }
     }
 }
 
 } // namespace MaterialX
-

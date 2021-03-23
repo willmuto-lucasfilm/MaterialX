@@ -17,16 +17,19 @@
 #include <dirent.h>
 #endif
 
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
+
+#include <array>
 #include <cctype>
 #include <cerrno>
-#include <climits>
 #include <cstring>
 
 namespace MaterialX
 {
 
-const string VALID_SEPARATORS_WINDOWS = "/\\";
-const string VALID_SEPARATORS_POSIX = "/";
+const string VALID_SEPARATORS = "/\\";
 
 const char PREFERRED_SEPARATOR_WINDOWS = '\\';
 const char PREFERRED_SEPARATOR_POSIX = '/';
@@ -38,19 +41,28 @@ const string PATH_LIST_SEPARATOR = ":";
 #endif
 const string MATERIALX_SEARCH_PATH_ENV_VAR = "MATERIALX_SEARCH_PATH";
 
+inline bool hasWindowsDriveSpecifier(const string& val)
+{
+    return (val.length() > 1 && std::isalpha(val[0]) && (val[1] == ':'));
+}
+
 //
 // FilePath methods
 //
 
-void FilePath::assign(const string& str, Format format)
+void FilePath::assign(const string& str)
 {
     _type = TypeRelative;
-    if (format == FormatWindows)
+    _vec = splitString(str, VALID_SEPARATORS);
+    if (!str.empty())
     {
-        _vec = splitString(str, VALID_SEPARATORS_WINDOWS);
-        if (str.size() >= 2)
+        if (str[0] == PREFERRED_SEPARATOR_POSIX)
         {
-            if (std::isalpha(str[0]) && str[1] == ':')
+            _type = TypeAbsolute;
+        }
+        else if (str.size() >= 2)
+        {
+            if (hasWindowsDriveSpecifier(str))
             {
                 _type = TypeAbsolute;
             }
@@ -60,15 +72,6 @@ void FilePath::assign(const string& str, Format format)
             }
         }
     }
-    else
-    {
-        _vec = splitString(str, VALID_SEPARATORS_POSIX);
-        if (!str.empty() && str[0] == PREFERRED_SEPARATOR_POSIX)
-        {
-            _type = TypeAbsolute;
-        }
-    }
-    _format = format;
 }
 
 string FilePath::asString(Format format) const
@@ -77,7 +80,11 @@ string FilePath::asString(Format format) const
 
     if (format == FormatPosix && isAbsolute())
     {
-        str += "/";
+        // Don't prepend a POSIX separator on a Windows absolute path
+        if (_vec.empty() || !hasWindowsDriveSpecifier(_vec[0]))
+        {
+            str += "/";
+        }
     }
     else if (format == FormatWindows && _type == TypeNetwork)
     {
@@ -109,10 +116,6 @@ FilePath FilePath::operator/(const FilePath& rhs) const
     {
         throw Exception("Appended path must be relative.");
     }
-    if (_format != rhs._format)
-    {
-        throw Exception("Appended path must have the same format.");
-    }
 
     FilePath combined(*this);
     for (const string& str : rhs._vec)
@@ -120,14 +123,6 @@ FilePath FilePath::operator/(const FilePath& rhs) const
         combined._vec.push_back(str);
     }
     return combined;
-}
-
-void FilePath::pop()
-{
-    if (!isEmpty())
-    {
-        _vec.pop_back();
-    }
 }
 
 bool FilePath::exists() const
@@ -170,7 +165,7 @@ FilePathVec FilePath::getFilesInDirectory(const string& extension) const
         {
             if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
             {
-                files.push_back(FilePath(fd.cFileName));
+                files.emplace_back(fd.cFileName);
             }
         } while (FindNextFile(hFind, &fd));
         FindClose(hFind);
@@ -227,7 +222,22 @@ FilePathVec FilePath::getSubDirectories() const
         while (struct dirent* entry = readdir(dir))
         {
             string path = entry->d_name;
-            if (entry->d_type == DT_DIR && (path != "." && path != ".."))
+            if (path == "." || path == "..")
+            {
+                continue;
+            }
+
+            auto d_type = entry->d_type;
+            FilePath newDir = *this / path;
+
+            if (d_type == DT_UNKNOWN)
+            {
+                if (newDir.isDirectory())
+                {
+                    d_type = DT_DIR;
+                }
+            }
+            if (d_type == DT_DIR)
             {
                 FilePath newDir = *this / path;
                 FilePathVec newDirs = newDir.getSubDirectories();
@@ -241,7 +251,7 @@ FilePathVec FilePath::getSubDirectories() const
     return dirs;
 }
 
-void FilePath::createDirectory()
+void FilePath::createDirectory() const
 {
 #if defined(_WIN32)
     _mkdir(asString().c_str());
@@ -253,19 +263,75 @@ void FilePath::createDirectory()
 FilePath FilePath::getCurrentPath()
 {
 #if defined(_WIN32)
-    char buf[MAX_PATH];
-    if (!GetCurrentDirectory(MAX_PATH, buf))
+    std::array<char, MAX_PATH> buf;
+    if (!GetCurrentDirectory(MAX_PATH, buf.data()))
     {
         throw Exception("Error in getCurrentPath: " + std::to_string(GetLastError()));
     }
-    return FilePath(buf);
+    return FilePath(buf.data());
 #else
-    char buf[PATH_MAX];
-    if (getcwd(buf, PATH_MAX) == NULL)
+    std::array<char, PATH_MAX> buf;
+    if (getcwd(buf.data(), PATH_MAX) == NULL)
     {
         throw Exception("Error in getCurrentPath: " + string(strerror(errno)));
     }
-    return FilePath(buf);
+    return FilePath(buf.data());
+#endif
+}
+
+FilePath FilePath::getModulePath()
+{
+#if defined(_WIN32)
+    vector<char> buf(MAX_PATH);
+    while (true)
+    {
+        uint32_t reqSize = GetModuleFileName(NULL, buf.data(), (uint32_t) buf.size());
+        if (!reqSize)
+        {
+            throw Exception("Error in getModulePath: " + std::to_string(GetLastError()));
+        }
+        else if ((size_t) reqSize >= buf.size())
+        {
+            buf.resize(buf.size() * 2);
+        }
+        else
+        {
+            return FilePath(buf.data()).getParentPath();
+        }
+    }
+#elif defined(__APPLE__)
+    vector<char> buf(PATH_MAX);
+    while (true)
+    {
+        uint32_t reqSize = buf.size();
+        if (_NSGetExecutablePath(buf.data(), &reqSize) == -1)
+        {
+            buf.resize((size_t) reqSize);
+        }
+        else
+        {
+            return FilePath(buf.data()).getParentPath();
+        }
+    }
+#else
+    vector<char> buf(PATH_MAX);
+    while (true)
+    {
+        ssize_t reqSize = readlink("/proc/self/exe", buf.data(), buf.size());
+        if (reqSize == -1)
+        {
+            throw Exception("Error in getModulePath: " + string(strerror(errno)));
+        }
+        else if ((size_t) reqSize >= buf.size())
+        {
+            buf.resize(buf.size() * 2);
+        }
+        else
+        {
+            buf.data()[reqSize] = '\0';
+            return FilePath(buf.data()).getParentPath();
+        }
+    }
 #endif
 }
 

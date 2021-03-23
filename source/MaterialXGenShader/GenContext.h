@@ -12,55 +12,13 @@
 #include <MaterialXGenShader/Library.h>
 
 #include <MaterialXGenShader/GenOptions.h>
+#include <MaterialXGenShader/GenUserData.h>
 #include <MaterialXGenShader/ShaderNode.h>
 
 #include <MaterialXFormat/File.h>
 
 namespace MaterialX
 {
-
-class GenUserData;
-
-/// Shared pointer to a GenUserData
-using GenUserDataPtr = std::shared_ptr<GenUserData>;
-
-/// Shared pointer to a constant GenUserData
-using ConstGenUserDataPtr = std::shared_ptr<const GenUserData>;
-
-/// @class GenUserData 
-/// Base class for custom user data needed during shader generation.
-class GenUserData : public std::enable_shared_from_this<GenUserData>
-{
-  public:
-    virtual ~GenUserData() { }
-    
-    /// Return a shared pointer for this object.
-    GenUserDataPtr getSelf()
-    {
-        return shared_from_this();
-    }
-
-    /// Return a shared pointer for this object.
-    ConstGenUserDataPtr getSelf() const
-    {
-        return shared_from_this();
-    }
-
-    /// Return this object cast to a templated type.
-    template<class T> shared_ptr<T> asA()
-    {
-        return std::dynamic_pointer_cast<T>(getSelf());
-    }
-
-    /// Return this object cast to a templated type.
-    template<class T> shared_ptr<const T> asA() const
-    {
-        return std::dynamic_pointer_cast<const T>(getSelf());
-    }
-
-  protected:
-    GenUserData() { }
-};
 
 /// @class GenContext 
 /// A context class for shader generation.
@@ -90,12 +48,6 @@ class GenContext
     }
 
     /// Add to the search path used for finding source code.
-    void registerSourceCodeSearchPath(const string& path)
-    {
-        _sourceCodeSearchPath.append(FilePath(path));
-    }
-
-    /// Add to the search path used for finding source code.
     void registerSourceCodeSearchPath(const FilePath& path)
     {
         _sourceCodeSearchPath.append(path);
@@ -113,12 +65,29 @@ class GenContext
         return _sourceCodeSearchPath.find(filename);
     }
 
+    /// Add reserved words that should not be used as
+    /// identifiers during code generation.
+    void addReservedWords(const StringSet& names)
+    {
+        _reservedWords.insert(names.begin(), names.end());
+    }
+
+    /// Return the set of reserved words that should not be used
+    /// as identifiers during code generation.
+    const StringSet& getReservedWords() const
+    {
+        return _reservedWords;
+    }
+
     /// Cache a shader node implementation.
     void addNodeImplementation(const string& name, ShaderNodeImplPtr impl);
 
     /// Find and return a cached shader node implementation,
     /// or return nullptr if no implementation is found.
-    ShaderNodeImplPtr findNodeImplementation(const string& name);
+    ShaderNodeImplPtr findNodeImplementation(const string& name) const;
+
+    /// Get the names of all cached node implementations.
+    void getNodeImplementationNames(StringSet& names);
 
     /// Clear all cached shader node implementation.
     void clearNodeImplementations();
@@ -189,6 +158,8 @@ class GenContext
     void getOutputSuffix(const ShaderOutput* output, string& suffix) const;
 
   protected:
+    GenContext() = delete;
+
     // Shader generator.
     ShaderGeneratorPtr _sg;
 
@@ -197,6 +168,9 @@ class GenContext
 
     // Search path for finding source files.
     FileSearchPath _sourceCodeSearchPath;
+
+    // Set of globally reserved words.
+    StringSet _reservedWords;
 
     // Cached shader node implementations.
     std::unordered_map<string, ShaderNodeImplPtr> _nodeImpls;

@@ -1,16 +1,17 @@
-import math
-import os
-import unittest
+#!/usr/bin/env python
+'''
+Unit tests for MaterialX Python.
+'''
+
+import math, os, unittest
 
 import MaterialX as mx
 
-# Unit tests for MaterialX Python.
 
 #--------------------------------------------------------------------------------
 _testValues = (1,
                True,
                1.0,
-               mx.Color2(0.1, 0.2),
                mx.Color3(0.1, 0.2, 0.3),
                mx.Color4(0.1, 0.2, 0.3, 0.4),
                mx.Vector2(1.0, 2.0),
@@ -18,7 +19,11 @@ _testValues = (1,
                mx.Vector4(1.0, 2.0, 3.0, 4.0),
                mx.Matrix33(0.0),
                mx.Matrix44(1.0),
-               'value')
+               'value',
+               [1, 2, 3],
+               [False, True, False],
+               [1.0, 2.0, 3.0],
+               ['one', 'two', 'three'])
 
 _fileDir = os.path.dirname(os.path.abspath(__file__))
 _libraryDir = os.path.join(_fileDir, '../../libraries/stdlib/')
@@ -39,19 +44,19 @@ _exampleFilenames = ('CustomNode.mtlx',
 
 _epsilon = 1e-4
 
+
 #--------------------------------------------------------------------------------
 class TestMaterialX(unittest.TestCase):
+    def test_Globals(self):
+        self.assertTrue(mx.__version__ == mx.getVersionString())
+
     def test_DataTypes(self):
         for value in _testValues:
-            # Convert between values and strings.
-            string = mx.valueToString(value)
-            newValue = mx.stringToValue(string, type(value))
+            valueString = mx.getValueString(value)
+            typeString = mx.getTypeString(value)
+            newValue = mx.createValueFromStrings(valueString, typeString)
             self.assertTrue(newValue == value)
-
-            # Convert between types and strings.
-            string = mx.typeToName(type(value))
-            newType = mx.nameToType(string)
-            self.assertTrue(newType == type(value))
+            self.assertTrue(mx.getTypeString(newValue) == typeString)
 
     def test_Vectors(self):
         v1 = mx.Vector3(1, 2, 3)
@@ -68,6 +73,14 @@ class TestMaterialX(unittest.TestCase):
         self.assertTrue(v2 - v1 == mx.Vector3(1, 2, 3))
         self.assertTrue(v2 * v1 == mx.Vector3(2, 8, 18))
         self.assertTrue(v2 / v1 == mx.Vector3(2, 2, 2))
+        v2 += v1
+        self.assertTrue(v2 == mx.Vector3(3, 6, 9))
+        v2 -= v1
+        self.assertTrue(v2 == mx.Vector3(2, 4, 6))
+        v2 *= v1
+        self.assertTrue(v2 == mx.Vector3(2, 8, 18))
+        v2 /= v1
+        self.assertTrue(v2 == mx.Vector3(2, 4, 6))
         self.assertTrue(v1 * 2 == v2)
         self.assertTrue(v2 / 2 == v1)
 
@@ -193,108 +206,81 @@ class TestMaterialX(unittest.TestCase):
 
         # Set constant node color.
         color = mx.Color3(0.1, 0.2, 0.3)
-        constant.setParameterValue('value', color)
-        self.assertTrue(constant.getParameterValue('value') == color)
+        constant.setInputValue('value', color)
+        self.assertTrue(constant.getInputValue('value') == color)
 
         # Set image node file.
         file = 'image1.tif'
-        image.setParameterValue('file', file, 'filename')
-        self.assertTrue(image.getParameterValue('file') == file)
+        image.setInputValue('file', file, 'filename')
+        self.assertTrue(image.getInputValue('file') == file)
 
         # Create a custom nodedef.
         nodeDef = doc.addNodeDef('nodeDef1', 'float', 'turbulence3d')
-        nodeDef.setParameterValue('octaves', 3)
-        nodeDef.setParameterValue('lacunarity', 2.0)
-        nodeDef.setParameterValue('gain', 0.5)
+        nodeDef.setInputValue('octaves', 3)
+        nodeDef.setInputValue('lacunarity', 2.0)
+        nodeDef.setInputValue('gain', 0.5)
 
         # Reference the custom nodedef.
         custom = nodeGraph.addNode('turbulence3d', 'turbulence1', 'float')
-        self.assertTrue(custom.getParameterValue('octaves') == 3)
-        custom.setParameterValue('octaves', 5)
-        self.assertTrue(custom.getParameterValue('octaves') == 5)
-
-        # Validate the document.
-        self.assertTrue(doc.validate()[0])
+        self.assertTrue(custom.getInputValue('octaves') == 3)
+        custom.setInputValue('octaves', 5)
+        self.assertTrue(custom.getInputValue('octaves') == 5)
 
         # Test scoped attributes.
         nodeGraph.setFilePrefix('folder/')
         nodeGraph.setColorSpace('lin_rec709')
-        self.assertTrue(image.getParameter('file').getResolvedValueString() == 'folder/image1.tif')
+        self.assertTrue(image.getInput('file').getResolvedValueString() == 'folder/image1.tif')
         self.assertTrue(constant.getActiveColorSpace() == 'lin_rec709')
 
         # Create a simple shader interface.
-        shaderDef = doc.addNodeDef('shader1', 'surfaceshader', 'simpleSrf')
-        diffColor = shaderDef.setInputValue('diffColor', mx.Color3(1.0))
-        specColor = shaderDef.setInputValue('specColor', mx.Color3(0.0))
-        roughness = shaderDef.setParameterValue('roughness', 0.25)
-        texId = shaderDef.setTokenValue('texId', '01')
-        self.assertTrue(roughness.getValue() == 0.25)
+        simpleSrf = doc.addNodeDef('', 'surfaceshader', 'simpleSrf')
+        simpleSrf.setInputValue('diffColor', mx.Color3(1.0))
+        simpleSrf.setInputValue('specColor', mx.Color3(0.0))
+        roughness = simpleSrf.setInputValue('roughness', 0.25)
+        self.assertTrue(roughness.getIsUniform() == False)
+        roughness.setIsUniform(True);
+        self.assertTrue(roughness.getIsUniform() == True)
 
-        # Create a material that instantiates the shader.
-        material = doc.addMaterial()
-        shaderRef = material.addShaderRef('shaderRef1', 'simpleSrf')
-        self.assertTrue(material.getPrimaryShaderName() == 'simpleSrf')
-        self.assertTrue(len(material.getPrimaryShaderParameters()) == 1)
-        self.assertTrue(len(material.getPrimaryShaderInputs()) == 2)
-        self.assertTrue(len(material.getPrimaryShaderTokens()) == 1)
-        self.assertTrue(roughness.getBoundValue(material) == 0.25)
+        # Instantiate shader and material nodes.
+        shaderNode = doc.addNodeInstance(simpleSrf)
+        materialNode = doc.addMaterialNode('', shaderNode)
 
-        # Bind a shader parameter to a value.
-        bindParam = shaderRef.addBindParam('roughness')
-        bindParam.setValue(0.5)
-        self.assertTrue(roughness.getBoundValue(material) == 0.5)
-        self.assertTrue(roughness.getDefaultValue() == 0.25)
+        # Bind the diffuse color input to the constant color output.
+        shaderNode.setConnectedOutput('diffColor', output1)
+        self.assertTrue(shaderNode.getUpstreamElement() == constant)
 
-        # Bind a shader input to a value.
-        bindInput = shaderRef.addBindInput('specColor')
-        bindInput.setValue(mx.Color3(0.5))
-        self.assertTrue(specColor.getBoundValue(material) == mx.Color3(0.5))
-        self.assertTrue(specColor.getDefaultValue() == mx.Color3(0.0))
-
-        # Bind a shader input to a graph output.
-        bindInput = shaderRef.addBindInput('diffColor')
-        bindInput.setConnectedOutput(output2)
-        self.assertTrue(diffColor.getUpstreamElement(material) == output2)
-        self.assertTrue(diffColor.getBoundValue(material) is None)
-        self.assertTrue(diffColor.getDefaultValue() == mx.Color3(1.0))
-
-        # Bind a shader token to a value.
-        bindToken = shaderRef.addBindToken('texId')
-        bindToken.setValue('02')
-        self.assertTrue(texId.getBoundValue(material) == '02')
-        self.assertTrue(texId.getDefaultValue() == '01')
-
-        # Create an inherited material.
-        material2 = doc.addMaterial()
-        material2.setInheritsFrom(material)
-        self.assertTrue(roughness.getBoundValue(material2) == 0.5)
-        self.assertTrue(diffColor.getUpstreamElement(material2) == output2)
+        # Bind the roughness input to a value.
+        instanceRoughness = shaderNode.setInputValue('roughness', 0.5)
+        self.assertTrue(instanceRoughness.getValue() == 0.5)
+        self.assertTrue(instanceRoughness.getDefaultValue() == 0.25)
 
         # Create a look for the material.
         look = doc.addLook()
         self.assertTrue(len(doc.getLooks()) == 1)
 
         # Bind the material to a geometry string.
-        matAssign1 = look.addMaterialAssign("matAssign1", material.getName())
+        matAssign1 = look.addMaterialAssign("matAssign1", materialNode.getName())
         matAssign1.setGeom("/robot1")
-        self.assertTrue(matAssign1.getReferencedMaterial() == material)
-        self.assertTrue(len(material.getGeometryBindings("/robot1")) == 1)
-        self.assertTrue(len(material.getGeometryBindings("/robot2")) == 0)
+        self.assertTrue(matAssign1.getReferencedMaterial() == materialNode)
+        self.assertTrue(len(mx.getGeometryBindings(materialNode, "/robot1")) == 1)
+        self.assertTrue(len(mx.getGeometryBindings(materialNode, "/robot2")) == 0)
 
         # Bind the material to a collection.
-        matAssign2 = look.addMaterialAssign("matAssign2", material.getName())
+        matAssign2 = look.addMaterialAssign("matAssign2", materialNode.getName())
         collection = doc.addCollection()
         collection.setIncludeGeom("/robot2")
         collection.setExcludeGeom("/robot2/left_arm")
         matAssign2.setCollection(collection)
-        self.assertTrue(len(material.getGeometryBindings("/robot2")) == 1)
-        self.assertTrue(len(material.getGeometryBindings("/robot2/right_arm")) == 1)
-        self.assertTrue(len(material.getGeometryBindings("/robot2/left_arm")) == 0)
+        self.assertTrue(len(mx.getGeometryBindings(materialNode, "/robot2")) == 1)
+        self.assertTrue(len(mx.getGeometryBindings(materialNode, "/robot2/right_arm")) == 1)
+        self.assertTrue(len(mx.getGeometryBindings(materialNode, "/robot2/left_arm")) == 0)
 
         # Create a property assignment.
-        propertyAssign = look.addPropertyAssign("twosided")
+        propertyAssign = look.addPropertyAssign()
+        propertyAssign.setProperty("twosided")
         propertyAssign.setGeom("/robot1")
         propertyAssign.setValue(True)
+        self.assertTrue(propertyAssign.getProperty() == "twosided")
         self.assertTrue(propertyAssign.getGeom() == "/robot1")
         self.assertTrue(propertyAssign.getValue() == True)
 
@@ -302,8 +288,10 @@ class TestMaterialX(unittest.TestCase):
         propertySet = doc.addPropertySet()
         propertySet.setPropertyValue('matte', False)
         self.assertTrue(propertySet.getPropertyValue('matte') == False)
-        propertySetAssign = look.addPropertySetAssign(propertySet.getName())
+        propertySetAssign = look.addPropertySetAssign()
+        propertySetAssign.setPropertySet(propertySet)
         propertySetAssign.setGeom('/robot1')
+        self.assertTrue(propertySetAssign.getPropertySet() == propertySet)
         self.assertTrue(propertySetAssign.getGeom() == '/robot1')
 
         # Create a variant set.
@@ -311,6 +299,10 @@ class TestMaterialX(unittest.TestCase):
         variantSet.addVariant("original")
         variantSet.addVariant("damaged")
         self.assertTrue(len(variantSet.getVariants()) == 2)
+
+        # Validate the document.
+        valid, message = doc.validate()
+        self.assertTrue(valid, 'Document returned validation warnings: ' + message)
 
         # Disconnect outputs from sources.
         output1.setConnectedNode(None)
@@ -350,7 +342,8 @@ class TestMaterialX(unittest.TestCase):
         output.setConnectedNode(mix)
 
         # Validate the document.
-        self.assertTrue(doc.validate()[0])
+        valid, message = doc.validate()
+        self.assertTrue(valid, 'Document returned validation warnings: ' + message)
 
         # Traverse the document tree (implicit iterator).
         nodeCount = 0
@@ -445,11 +438,13 @@ class TestMaterialX(unittest.TestCase):
             lib = mx.createDocument()
             mx.readFromXmlFile(lib, filename, _searchPath)
             libs.append(lib)
+
         # Read and validate each example document.
         for filename in _exampleFilenames:
             doc = mx.createDocument()
             mx.readFromXmlFile(doc, filename, _searchPath)
-            self.assertTrue(doc.validate()[0])
+            valid, message = doc.validate()
+            self.assertTrue(valid, filename + ' returned validation warnings: ' + message)
 
             # Copy the document.
             copiedDoc = doc.copy()
@@ -463,23 +458,6 @@ class TestMaterialX(unittest.TestCase):
                 if elem.isA(mx.ValueElement):
                     valueElementCount += 1
             self.assertTrue(valueElementCount > 0)
-
-            # Traverse upstream from each shader input.
-            for material in doc.getMaterials():
-                self.assertTrue(material.getPrimaryShaderNodeDef())
-                edgeCount = 0
-                for param in material.getPrimaryShaderParameters():
-                    boundValue = param.getBoundValue(material)
-                    self.assertTrue(boundValue is not None)
-                    for _ in param.traverseGraph(material):
-                        edgeCount += 1
-                for shaderInput in material.getPrimaryShaderInputs():
-                    boundValue = shaderInput.getBoundValue(material)
-                    upstreamElement = shaderInput.getUpstreamElement(material)
-                    self.assertTrue(boundValue is not None or upstreamElement is not None)
-                    for _ in shaderInput.traverseGraph(material):
-                        edgeCount += 1
-                self.assertTrue(edgeCount > 0)
 
             # Serialize to XML.
             writeOptions = mx.XmlWriteOptions()
@@ -497,13 +475,12 @@ class TestMaterialX(unittest.TestCase):
                 doc2.importLibrary(lib)
             self.assertTrue(doc2.validate()[0])
 
-        # Read the same document twice with duplicate elements skipped.
+        # Read the same document twice, and verify that duplicate elements
+        # are skipped.
         doc = mx.createDocument()
-        readOptions = mx.XmlReadOptions()
-        readOptions.skipDuplicateElements = True
         filename = 'PostShaderComposite.mtlx'
-        mx.readFromXmlFile(doc, filename, _searchPath, readOptions)
-        mx.readFromXmlFile(doc, filename, _searchPath, readOptions)
+        mx.readFromXmlFile(doc, filename, _searchPath)
+        mx.readFromXmlFile(doc, filename, _searchPath)
         self.assertTrue(doc.validate()[0])
 
 #--------------------------------------------------------------------------------

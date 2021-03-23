@@ -4,14 +4,13 @@
 //
 
 #include <MaterialXGenShader/TypeDesc.h>
-#include <MaterialXGenShader/ShaderGenerator.h>
 
 namespace MaterialX
 {
 
 namespace
 {
-    using TypeDescPtr = std::shared_ptr<TypeDesc>;
+    using TypeDescPtr = std::unique_ptr<TypeDesc>;
     using TypeDescMap = std::unordered_map<string, TypeDescPtr>;
 
     // Internal storage of the type descriptor pointers
@@ -44,13 +43,14 @@ const TypeDesc* TypeDesc::registerType(const string& name, unsigned char basetyp
     auto it = map.find(name);
     if (it != map.end())
     {
-        throw ExceptionShaderGenError("A type with name '" + name + "' is already registered");
+        throw Exception("A type with name '" + name + "' is already registered");
     }
 
-    TypeDescPtr ptr = TypeDescPtr(new TypeDesc(name, basetype, semantic, size, editable, channelMapping));
-    map[name] = ptr;
+    std::unique_ptr<TypeDesc> uniquePtr(new TypeDesc(name, basetype, semantic, size, editable, channelMapping));
+    TypeDesc* rawPtr = uniquePtr.get();
+    map[name] = std::move(uniquePtr);
 
-    return ptr.get();
+    return rawPtr;
 }
 
 int TypeDesc::getChannelIndex(char channel) const
@@ -63,11 +63,7 @@ const TypeDesc* TypeDesc::get(const string& name)
 {
     const TypeDescMap& map = typeMap();
     auto it = map.find(name);
-    if (it == map.end())
-    {
-        throw ExceptionShaderGenError("No registered type with name '" + name + "' could be found");
-    }
-    return it->second.get();
+    return it != map.end() ? it->second.get() : nullptr;
 }
 
 namespace Type
@@ -84,7 +80,6 @@ namespace Type
     const TypeDesc* VECTOR2            = TypeDesc::registerType("vector2", TypeDesc::BASETYPE_FLOAT, TypeDesc::SEMANTIC_VECTOR, 2, true, {{'x', 0}, {'y', 1}});
     const TypeDesc* VECTOR3            = TypeDesc::registerType("vector3", TypeDesc::BASETYPE_FLOAT, TypeDesc::SEMANTIC_VECTOR, 3, true, {{'x', 0}, {'y', 1}, {'z', 2}});
     const TypeDesc* VECTOR4            = TypeDesc::registerType("vector4", TypeDesc::BASETYPE_FLOAT, TypeDesc::SEMANTIC_VECTOR, 4, true, {{'x', 0}, {'y', 1}, {'z', 2}, {'w', 3}});
-    const TypeDesc* COLOR2             = TypeDesc::registerType("color2", TypeDesc::BASETYPE_FLOAT, TypeDesc::SEMANTIC_COLOR, 2, true, {{'r', 0}, {'a', 1}});
     const TypeDesc* COLOR3             = TypeDesc::registerType("color3", TypeDesc::BASETYPE_FLOAT, TypeDesc::SEMANTIC_COLOR, 3, true, {{'r', 0}, {'g', 1}, {'b', 2}});
     const TypeDesc* COLOR4             = TypeDesc::registerType("color4", TypeDesc::BASETYPE_FLOAT, TypeDesc::SEMANTIC_COLOR, 4, true, {{'r', 0}, {'g', 1}, {'b', 2}, {'a', 3}});
     const TypeDesc* MATRIX33           = TypeDesc::registerType("matrix33", TypeDesc::BASETYPE_FLOAT, TypeDesc::SEMANTIC_MATRIX, 9);
@@ -94,11 +89,11 @@ namespace Type
     const TypeDesc* BSDF               = TypeDesc::registerType("BSDF", TypeDesc::BASETYPE_NONE, TypeDesc::SEMANTIC_CLOSURE, 1, false);
     const TypeDesc* EDF                = TypeDesc::registerType("EDF", TypeDesc::BASETYPE_NONE, TypeDesc::SEMANTIC_CLOSURE, 1, false);
     const TypeDesc* VDF                = TypeDesc::registerType("VDF", TypeDesc::BASETYPE_NONE, TypeDesc::SEMANTIC_CLOSURE, 1, false);
-    const TypeDesc* ROUGHNESSINFO      = TypeDesc::registerType("roughnessinfo", TypeDesc::BASETYPE_NONE, TypeDesc::SEMANTIC_NONE, 1, false);
     const TypeDesc* SURFACESHADER      = TypeDesc::registerType("surfaceshader", TypeDesc::BASETYPE_NONE, TypeDesc::SEMANTIC_SHADER, 1, false);
     const TypeDesc* VOLUMESHADER       = TypeDesc::registerType("volumeshader", TypeDesc::BASETYPE_NONE, TypeDesc::SEMANTIC_SHADER, 1, false);
     const TypeDesc* DISPLACEMENTSHADER = TypeDesc::registerType("displacementshader", TypeDesc::BASETYPE_NONE, TypeDesc::SEMANTIC_SHADER, 1, false);
     const TypeDesc* LIGHTSHADER        = TypeDesc::registerType("lightshader", TypeDesc::BASETYPE_NONE, TypeDesc::SEMANTIC_SHADER, 1, false);
+    const TypeDesc* MATERIAL           = TypeDesc::registerType("material", TypeDesc::BASETYPE_NONE, TypeDesc::SEMANTIC_MATERIAL, 1, false);
 }
 
 }

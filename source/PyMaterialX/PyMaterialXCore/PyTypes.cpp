@@ -92,17 +92,15 @@ void bindPyTypes(py::module& mod)
         .def(py::init<float, float, float, float>())
         .def("asTuple", [](const mx::Vector4& v) { return std::make_tuple(v[0], v[1], v[2], v[3]); });
 
-    py::class_<mx::Color2, mx::Vector2>(mod, "Color2")
-        BIND_VECTOR_SUBCLASS(mx::Color2, 2)
-        .def(py::init<float, float>());
-
-    py::class_<mx::Color3, mx::Vector3>(mod, "Color3")
+    py::class_<mx::Color3, mx::VectorBase>(mod, "Color3")
         BIND_VECTOR_SUBCLASS(mx::Color3, 3)
-        .def(py::init<float, float, float>());
+        .def(py::init<float, float, float>())
+        .def("asTuple", [](const mx::Vector3& v) { return std::make_tuple(v[0], v[1], v[2]); });
 
-    py::class_<mx::Color4, mx::Vector4>(mod, "Color4")
+    py::class_<mx::Color4, mx::VectorBase>(mod, "Color4")
         BIND_VECTOR_SUBCLASS(mx::Color4, 4)
-        .def(py::init<float, float, float, float>());
+        .def(py::init<float, float, float, float>())
+        .def("asTuple", [](const mx::Vector4& v) { return std::make_tuple(v[0], v[1], v[2], v[3]); });
 
     py::class_<mx::Matrix33, mx::MatrixBase>(mod, "Matrix33")
         BIND_MATRIX_SUBCLASS(mx::Matrix33, 3)
@@ -130,4 +128,23 @@ void bindPyTypes(py::module& mod)
         .def_static("createRotationY", &mx::Matrix44::createRotationY)
         .def_static("createRotationZ", &mx::Matrix44::createRotationZ)
         .def_readonly_static("IDENTITY", &mx::Matrix44::IDENTITY);
+
+    mod.attr("DEFAULT_TYPE_STRING") = mx::DEFAULT_TYPE_STRING;
+    mod.attr("FILENAME_TYPE_STRING") = mx::FILENAME_TYPE_STRING;
+    mod.attr("GEOMNAME_TYPE_STRING") = mx::GEOMNAME_TYPE_STRING;
+    mod.attr("SURFACE_SHADER_TYPE_STRING") = mx::SURFACE_SHADER_TYPE_STRING;
+    mod.attr("DISPLACEMENT_SHADER_TYPE_STRING") = mx::DISPLACEMENT_SHADER_TYPE_STRING;
+    mod.attr("VOLUME_SHADER_TYPE_STRING") = mx::VOLUME_SHADER_TYPE_STRING;
+    mod.attr("LIGHT_SHADER_TYPE_STRING") = mx::LIGHT_SHADER_TYPE_STRING;
+    mod.attr("MATERIAL_TYPE_STRING") = mx::MATERIAL_TYPE_STRING;
+    mod.attr("SURFACE_MATERIAL_NODE_STRING") = mx::SURFACE_MATERIAL_NODE_STRING;
+    mod.attr("VOLUME_MATERIAL_NODE_STRING") = mx::VOLUME_MATERIAL_NODE_STRING;
+    mod.attr("MULTI_OUTPUT_TYPE_STRING") = mx::MULTI_OUTPUT_TYPE_STRING;
+    mod.attr("NONE_TYPE_STRING") = mx::NONE_TYPE_STRING;
+    mod.attr("VALUE_STRING_TRUE") = mx::VALUE_STRING_TRUE;
+    mod.attr("VALUE_STRING_FALSE") = mx::VALUE_STRING_FALSE;
+    mod.attr("NAME_PREFIX_SEPARATOR") = mx::NAME_PREFIX_SEPARATOR;
+    mod.attr("NAME_PATH_SEPARATOR") = mx::NAME_PATH_SEPARATOR;
+    mod.attr("ARRAY_VALID_SEPARATORS") = mx::ARRAY_VALID_SEPARATORS;
+    mod.attr("ARRAY_PREFERRED_SEPARATOR") = mx::ARRAY_PREFERRED_SEPARATOR;
 }

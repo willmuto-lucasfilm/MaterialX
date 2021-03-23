@@ -13,26 +13,26 @@
 namespace MaterialX
 {
 
+const string Backdrop::CONTAINS_ATTRIBUTE = "contains";
+const string Backdrop::WIDTH_ATTRIBUTE = "width";
+const string Backdrop::HEIGHT_ATTRIBUTE = "height";
+
 //
 // Node methods
 //
 
-InputPtr Node::setConnectedNode(const string& inputName, NodePtr node)
+void Node::setConnectedNode(const string& inputName, NodePtr node)
 {
     InputPtr input = getInput(inputName);
     if (!input)
     {
         input = addInput(inputName);
-        if (node)
-        {
-            input->setType(node->getType());
-        }
     }
     if (node)
     {
-        input->setConnectedNode(node);
+        input->setType(node->getType());
     }
-    return input;
+    input->setConnectedNode(node);
 }
 
 NodePtr Node::getConnectedNode(const string& inputName) const
@@ -45,7 +45,7 @@ NodePtr Node::getConnectedNode(const string& inputName) const
     return input->getConnectedNode();    
 }
 
-InputPtr Node::setConnectedNodeName(const string& inputName, const string& nodeName)
+void Node::setConnectedNodeName(const string& inputName, const string& nodeName)
 {
     InputPtr input = getInput(inputName);
     if (!input)
@@ -53,7 +53,6 @@ InputPtr Node::setConnectedNodeName(const string& inputName, const string& nodeN
         input = addInput(inputName);
     }
     input->setNodeName(nodeName);
-    return input;
 }
 
 string Node::getConnectedNodeName(const string& inputName) const
@@ -64,6 +63,30 @@ string Node::getConnectedNodeName(const string& inputName) const
         return EMPTY_STRING;
     }
     return input->getNodeName();
+}
+
+void Node::setConnectedOutput(const string& inputName, OutputPtr output)
+{
+    InputPtr input = getInput(inputName);
+    if (!input)
+    {
+        input = addInput(inputName, DEFAULT_TYPE_STRING);
+    }
+    if (output)
+    {
+        input->setType(output->getType());
+    }
+    input->setConnectedOutput(output);
+}
+
+OutputPtr Node::getConnectedOutput(const string& inputName) const
+{
+    InputPtr input = getInput(inputName);
+    if (!input)
+    {
+        return OutputPtr();
+    }
+    return input->getConnectedOutput();    
 }
 
 NodeDefPtr Node::getNodeDef(const string& target) const
@@ -78,7 +101,7 @@ NodeDefPtr Node::getNodeDef(const string& target) const
     for (NodeDefPtr nodeDef : nodeDefs)
     {
         if (targetStringsMatch(nodeDef->getTarget(), target) &&
-            nodeDef->isVersionCompatible(getSelf()) &&
+            nodeDef->isVersionCompatible(getVersionString()) &&
             isTypeCompatible(nodeDef))
         {
             return nodeDef;
@@ -87,7 +110,7 @@ NodeDefPtr Node::getNodeDef(const string& target) const
     return NodeDefPtr();
 }
 
-Edge Node::getUpstreamEdge(ConstMaterialPtr material, size_t index) const
+Edge Node::getUpstreamEdge(size_t index) const
 {
     if (index < getUpstreamEdgeCount())
     {
@@ -113,29 +136,32 @@ OutputPtr Node::getNodeDefOutput(ElementPtr connectingElement)
         // port. If no explicit output is specified this will
         // return an empty string which is handled below.
         outputName = &port->getOutputString();
-    }
-    else
-    {
-        const BindInputPtr bindInput = connectingElement->asA<BindInput>();
-        if (bindInput)
+
+        // Handle case where it's an input to a top level output
+        InputPtr connectedInput = connectingElement->asA<Input>();
+        OutputPtr output = OutputPtr();
+        if (connectedInput)
         {
-            // Handle the case where the edge involves a bindinput.
-            const OutputPtr output = bindInput->getConnectedOutput();
-            if (output)
+            InputPtr interfaceInput = nullptr;
+            if (connectedInput->hasInterfaceName())
             {
-                if (output->getParent()->isA<NodeGraph>())
+                interfaceInput = connectedInput->getInterfaceInput();
+                if (interfaceInput)
                 {
-                    // The bindinput connects to a graph output,
-                    // so this is the output we're looking for.
-                    outputName = &output->getName();
+                    outputName = &(interfaceInput->getOutputString());
+                    output = interfaceInput->getConnectedOutput();
                 }
-                else
-                {
-                    // The bindinput connects to a free floating output,
-                    // so we have an extra level of indirection. Hence 
-                    // get its connected output.
-                    outputName = &output->getOutputString();
-                }
+            }
+            if (!interfaceInput)
+            {
+                output = connectedInput->getConnectedOutput();
+            }
+        }
+        if (output)
+        {
+            if (output->getParent() == output->getDocument())
+            {
+                outputName = &output->getOutputString();
             }
         }
     }
@@ -171,7 +197,8 @@ vector<PortElementPtr> Node::getDownstreamPorts() const
 bool Node::validate(string* message) const
 {
     bool res = true;
-    validateRequire(hasType(), res, message, "Missing type");
+    validateRequire(!getCategory().empty(), res, message, "Node element is missing a category");
+    validateRequire(hasType(), res, message, "Node element is missing a type");
     return InterfaceElement::validate(message) && res;
 }
 
@@ -179,7 +206,26 @@ bool Node::validate(string* message) const
 // GraphElement methods
 //
 
-void GraphElement::flattenSubgraphs(const string& target)
+NodePtr GraphElement::addMaterialNode(const string& name, ConstNodePtr shaderNode)
+{
+    string category = SURFACE_MATERIAL_NODE_STRING;
+    if (shaderNode)
+    {
+        if (shaderNode->getType() == VOLUME_MATERIAL_NODE_STRING)
+        {
+            category = VOLUME_SHADER_TYPE_STRING;
+        }
+    }
+    NodePtr materialNode = addNode(category, name, MATERIAL_TYPE_STRING);
+    if (shaderNode)
+    {
+        InputPtr input = materialNode->addInput(shaderNode->getType(), shaderNode->getType());
+        input->setNodeName(shaderNode->getName());
+    }
+    return materialNode;
+}
+
+void GraphElement::flattenSubgraphs(const string& target, NodePredicate filter)
 {
     vector<NodePtr> processNodeVec = getNodes();
     while (!processNodeVec.empty())
@@ -205,10 +251,20 @@ void GraphElement::flattenSubgraphs(const string& target)
         }
         processNodeVec.clear();
 
+        // Attributes in addition to value to copy over
+        StringVec copyAttributes = { ValueElement::UNIT_ATTRIBUTE,
+                                     ValueElement::UNITTYPE_ATTRIBUTE,
+                                     ValueElement::COLOR_SPACE_ATTRIBUTE };
+
         // Iterate through nodes with graph implementations.
-        for (auto pair : graphImplMap)
+        for (const auto& pair : graphImplMap)
         {
             NodePtr processNode = pair.first;
+            if (filter && !filter(processNode))
+            {
+                continue;
+            }
+
             NodeGraphPtr sourceSubGraph = pair.second;
             std::unordered_map<NodePtr, NodePtr> subNodeMap;
 
@@ -235,6 +291,13 @@ void GraphElement::flattenSubgraphs(const string& target)
                         {
                             destValue->setValueString(refValue->getValueString());
                         }
+                        for (auto copyAttribute : copyAttributes)
+                        {
+                            if (refValue->hasAttribute(copyAttribute))
+                            {
+                                destValue->setAttribute(copyAttribute, refValue->getAttribute(copyAttribute));
+                            }
+                        }
                         if (destValue->isA<Input>() && refValue->isA<Input>())
                         {
                             InputPtr refInput = refValue->asA<Input>();
@@ -260,7 +323,7 @@ void GraphElement::flattenSubgraphs(const string& target)
             }
 
             // Transfer internal connections between subgraphs.
-            for (auto subNodePair : subNodeMap)
+            for (const auto& subNodePair : subNodeMap)
             {
                 NodePtr sourceSubNode = subNodePair.first;
                 NodePtr destSubNode = subNodePair.second;
@@ -307,7 +370,7 @@ vector<ElementPtr> GraphElement::topologicalSort() const
         size_t connectionCount = 0;
         for (size_t i = 0; i < child->getUpstreamEdgeCount(); ++i)
         {
-            if (child->getUpstreamEdge(nullptr, i))
+            if (child->getUpstreamEdge(i))
             {
                 connectionCount++;
             }
@@ -391,7 +454,7 @@ string GraphElement::asStringDot() const
             dot += "    \"" + nameMap[node->getName()] + "\" ";
             NodeDefPtr nodeDef = node->getNodeDef();
             const string& nodeGroup = nodeDef ? nodeDef->getNodeGroup() : EMPTY_STRING;
-            if (nodeGroup == CONDITIONAL_NODE_GROUP)
+            if (nodeGroup == NodeDef::CONDITIONAL_NODE_GROUP)
             {
                 dot += "[shape=diamond];\n";
             }
@@ -464,6 +527,86 @@ void NodeGraph::setNodeDef(ConstNodeDefPtr nodeDef)
     }
 }
 
+ValueElementPtr Node::addInputFromNodeDef(const string& name)
+{
+    ValueElementPtr newChild = nullptr;
+    NodeDefPtr elemNodeDef = getNodeDef();
+    if (elemNodeDef)
+    {
+        ValueElementPtr nodeDefElem = elemNodeDef->getChildOfType<ValueElement>(name);
+        const string& inputName = nodeDefElem->getName();
+        ElementPtr existingElement = getChild(inputName);
+        if (existingElement && existingElement->isA<ValueElement>())
+        {
+            return existingElement->asA<ValueElement>();
+        }
+
+        if (nodeDefElem->isA<Input>())
+        {
+            newChild = addInput(inputName, nodeDefElem->getType());
+        }
+        if (newChild)
+        {
+            newChild->copyContentFrom(nodeDefElem);
+        }
+    }
+    return newChild;
+}
+
+void NodeGraph::addInterfaceName(const string& inputPath, const string& interfaceName)
+{
+    NodeDefPtr nodeDef = getNodeDef();
+    if (!nodeDef)
+    {
+        throw Exception("Cannot declare an interface for a nodegraph which is not associated with a node definition: " + getName());
+    }
+    if (nodeDef->getChild(interfaceName))
+    {
+        throw Exception("Interface: " + interfaceName + " has already been declared on the node definition: " + nodeDef->getName());
+    }
+
+    ElementPtr elem = getDescendant(inputPath);
+    InputPtr input = elem ? elem->asA<Input>() : nullptr;
+    if (input && !input->getConnectedNode())
+    {
+        input->setInterfaceName(interfaceName);
+        ValuePtr value = input->getValue();
+        if (value)
+        {
+            InputPtr nodeDefInput = nodeDef->addInput(interfaceName, input->getType());
+            nodeDefInput->setValueString(value->getValueString());
+        }
+    }
+}
+
+void NodeGraph::removeInterfaceName(const string& inputPath)
+{
+    ElementPtr desc = getDescendant(inputPath);
+    InputPtr input = desc ? desc->asA<Input>() : nullptr;
+    if (input)
+    {
+        const string& interfaceName = input->getInterfaceName();
+        getNodeDef()->removeChild(interfaceName);
+        input->setInterfaceName(EMPTY_STRING);
+    }   
+}
+
+void NodeGraph::modifyInterfaceName(const string& inputPath, const string& interfaceName)
+{
+    ElementPtr desc = getDescendant(inputPath);
+    InputPtr input = desc ? desc->asA<Input>() : nullptr;
+    if (input)
+    {
+        const string& previousName = input->getInterfaceName();
+        ElementPtr previousChild = getNodeDef()->getChild(previousName);
+        if (previousChild)
+        {
+            previousChild->setName(interfaceName);
+        }
+        input->setInterfaceName(interfaceName);
+    }
+}
+
 NodeDefPtr NodeGraph::getNodeDef() const
 {
     return resolveRootNameReference<NodeDef>(getNodeDefString());
@@ -478,19 +621,41 @@ InterfaceElementPtr NodeGraph::getImplementation() const
 bool NodeGraph::validate(string* message) const
 {
     bool res = true;
+
+    validateRequire(!hasVersionString(), res, message, "NodeGraph elements do not support version strings");
     if (hasNodeDefString())
     {
         NodeDefPtr nodeDef = getNodeDef();
         validateRequire(nodeDef != nullptr, res, message, "NodeGraph implementation refers to non-existent NodeDef");
         if (nodeDef)
         {
-            if (nodeDef->isMultiOutputType())
+            validateRequire(getOutputCount() == nodeDef->getActiveOutputs().size(), res, message, "NodeGraph implementation has a different number of outputs than its NodeDef");
+        }
+    }
+    // Check interfaces on nodegraphs which are not definitions
+    if (!hasNodeDefString())
+    {
+        for (NodePtr node : getNodes())
+        {
+            for (InputPtr input : node->getInputs())
             {
-                validateRequire(getOutputCount() == nodeDef->getOutputCount(), res, message, "NodeGraph implementation has a different number of outputs than its NodeDef");
-            }
-            else
-            {
-                validateRequire(getOutputCount() == 1, res, message, "NodeGraph implementation has a different number of outputs than its NodeDef");
+                const string& interfaceName = input->getInterfaceName();
+                if (!interfaceName.empty())
+                {
+                    InputPtr interfaceInput = input->getInterfaceInput();
+                    validateRequire(interfaceInput != nullptr, res, message, "NodeGraph interface input: \"" + interfaceName + "\" does not exist on nodegraph");
+                    string connectedNodeName = interfaceInput ? interfaceInput->getNodeName() : EMPTY_STRING;
+                    if (connectedNodeName.empty())
+                    {
+                        connectedNodeName = interfaceInput->getNodeGraphString();
+                    }
+                    if (interfaceInput && !connectedNodeName.empty())
+                    {
+                        NodePtr connectedNode = input->getConnectedNode();
+                        validateRequire(connectedNode != nullptr, res, message, "Nodegraph input: \"" + interfaceInput->getNamePath() +
+                            "\" specifies connection to non existent node: \"" + connectedNodeName + "\"");
+                    }
+                }
             }
         }
     }
@@ -500,6 +665,57 @@ bool NodeGraph::validate(string* message) const
 ConstNodeDefPtr NodeGraph::getDeclaration(const string&) const
 {
     return getNodeDef();
+}
+
+//
+// Backdrop methods
+//
+
+void Backdrop::setContainsElements(const vector<ConstTypedElementPtr>& elems)
+{
+    if (!elems.empty())
+    {
+        StringVec stringVec;
+        for (ConstTypedElementPtr elem : elems)
+        {
+            stringVec.push_back(elem->getName());
+        }
+        setTypedAttribute(CONTAINS_ATTRIBUTE, stringVec);
+    }
+    else
+    {
+        removeAttribute(CONTAINS_ATTRIBUTE);
+    }
+}
+
+vector<TypedElementPtr> Backdrop::getContainsElements() const
+{
+    vector<TypedElementPtr> vec;
+    ConstGraphElementPtr graph = getAncestorOfType<GraphElement>();
+    if (graph)
+    {
+        for (const string& str : getTypedAttribute<StringVec>(CONTAINS_ATTRIBUTE))
+        {
+            TypedElementPtr elem = graph->getChildOfType<TypedElement>(str);
+            if (elem)
+            {
+                vec.push_back(elem);
+            }
+        }
+    }
+    return vec;
+}
+
+bool Backdrop::validate(string* message) const
+{
+    bool res = true;
+    if (hasContainsString())
+    {
+        StringVec stringVec = getTypedAttribute<StringVec>("contains");
+        vector<TypedElementPtr> elemVec = getContainsElements();
+        validateRequire(stringVec.size() == elemVec.size(), res, message, "Invalid element in contains string");
+    }
+    return Element::validate(message) && res;
 }
 
 } // namespace MaterialX

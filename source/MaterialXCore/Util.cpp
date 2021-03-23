@@ -3,9 +3,9 @@
 // All rights reserved.  See LICENSE.txt for license.
 //
 
-#include <MaterialXCore/Util.h>
+#include <MaterialXCore/Types.h>
 
-#include <MaterialXCore/Element.h>
+#include <cctype>
 
 namespace MaterialX
 {
@@ -93,7 +93,7 @@ StringVec splitString(const string& str, const string& sep)
 
 string replaceSubstrings(string str, const StringMap& stringMap)
 {
-    for (auto& pair : stringMap)
+    for (const auto& pair : stringMap)
     {
         if (pair.first.empty())
             continue;
@@ -108,15 +108,60 @@ string replaceSubstrings(string str, const StringMap& stringMap)
     return str;
 }
 
-string prettyPrint(ConstElementPtr elem)
+string stringToLower(string str)
 {
-    string text;
-    for (TreeIterator it = elem->traverseTree().begin(); it != TreeIterator::end(); ++it)
+    std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c)
     {
-        string indent(it.getElementDepth() * 2, ' ');
-        text += indent + it.getElement()->asString() + "\n";
+        return (char) std::tolower(c);
+    });
+    return str;
+}
+
+bool stringEndsWith(const string& str, const string& suffix)
+{
+    if (str.length() >= suffix.length())
+    {
+        return !str.compare(str.length() - suffix.length(), suffix.length(), suffix);
     }
-    return text;
+    return false;
+}
+
+string trimSpaces(const string& str)
+{
+    const string SPACE(" ");
+
+    size_t start = str.find_first_not_of(SPACE);
+    string result = (start == std::string::npos) ? EMPTY_STRING : str.substr(start);
+    size_t end = result.find_last_not_of(SPACE);
+    result = (end == std::string::npos) ? EMPTY_STRING : result.substr(0, end + 1);
+    return result;
+}
+
+StringVec splitNamePath(const string& namePath)
+{
+    StringVec nameVec = splitString(namePath, NAME_PATH_SEPARATOR);
+    return nameVec;
+}
+
+string createNamePath(const StringVec& nameVec)
+{
+    string res;
+    for (const string& name : nameVec)
+    {
+        res = res.empty() ? name: res + NAME_PATH_SEPARATOR + name;
+    }
+    return res;
+}
+
+string parentNamePath(const string& namePath)
+{
+    StringVec nameVec = splitNamePath(namePath);
+    if (!nameVec.empty())
+    {
+        nameVec.pop_back();
+        return createNamePath(nameVec);
+    }
+    return EMPTY_STRING;
 }
 
 } // namespace MaterialX

@@ -11,25 +11,17 @@
 
 #include <MaterialXCore/Library.h>
 
-#include <MaterialXCore/Element.h>
-
 #include <MaterialXCore/Geom.h>
 
 namespace MaterialX
 {
 
-class Parameter;
 class PortElement;
 class Input;
 class Output;
 class InterfaceElement;
 class Node;
 class NodeDef;
-
-/// A shared pointer to a Parameter
-using ParameterPtr = shared_ptr<Parameter>;
-/// A shared pointer to a const Parameter
-using ConstParameterPtr = shared_ptr<const Parameter>;
 
 /// A shared pointer to a PortElement
 using PortElementPtr = shared_ptr<PortElement>;
@@ -52,40 +44,6 @@ using InterfaceElementPtr = shared_ptr<InterfaceElement>;
 using ConstInterfaceElementPtr = shared_ptr<const InterfaceElement>;
 
 using CharSet = std::set<char>;
-
-/// @class Parameter
-/// A parameter element within a Node or NodeDef.
-///
-/// A Parameter holds a single uniform value, which may be modified within the
-/// scope of a Material.
-class Parameter : public ValueElement
-{
-  public:
-    Parameter(ElementPtr parent, const string& name) :
-        ValueElement(parent, CATEGORY, name)
-    {
-    }
-    virtual ~Parameter() { }
-
-    /// @name Traversal
-    /// @{
-
-    /// Return the Edge with the given index that lies directly upstream from
-    /// this element in the dataflow graph.
-    Edge getUpstreamEdge(ConstMaterialPtr material = nullptr,
-                         size_t index = 0) const override;
-
-    /// Return the number of queriable upstream edges for this element.
-    size_t getUpstreamEdgeCount() const override
-    {
-        return 1;
-    }
-
-    /// @}
-
-  public:
-    static const string CATEGORY;
-};
 
 /// @class PortElement
 /// The base class for port elements such as Input and Output.
@@ -125,6 +83,28 @@ class PortElement : public ValueElement
     const string& getNodeName() const
     {
         return getAttribute(NODE_NAME_ATTRIBUTE);
+    }
+
+    /// @}
+    /// @name Node Graph
+    /// @{
+
+    /// Set the node graph string of this element.
+    void setNodeGraphString(const string& node)
+    {
+        setAttribute(NODE_GRAPH_ATTRIBUTE, node);
+    }
+
+    /// Return true if this element has a node graph string.
+    bool hasNodeGraphString() const
+    {
+        return hasAttribute(NODE_GRAPH_ATTRIBUTE);
+    }
+
+    /// Return the node graph string of this element.
+    const string& getNodeGraphString() const
+    {
+        return getAttribute(NODE_GRAPH_ATTRIBUTE);
     }
 
     /// @}
@@ -176,7 +156,7 @@ class PortElement : public ValueElement
     /// source type string.
     static bool validChannelsCharacters(const string &channels, const string &sourceType);
 
-    /// Return true if the given swizzle pattern is valid for the given source
+    /// Return true if the given channels string is valid for the given source
     /// and destination type strings.
     static bool validChannelsString(const string& channels, const string& sourceType, const string& destinationType);
 
@@ -185,11 +165,12 @@ class PortElement : public ValueElement
     /// @{
 
     /// Set the node to which this element is connected.  The given node must
-    /// belong to the same node graph.
+    /// belong to the same node graph.  If the node argument is null, then
+    /// any existing node connection will be cleared.
     void setConnectedNode(NodePtr node);
 
     /// Return the node, if any, to which this element is connected.
-    NodePtr getConnectedNode() const;
+    virtual NodePtr getConnectedNode() const;
 
     /// @}
     /// @name Validation
@@ -203,6 +184,7 @@ class PortElement : public ValueElement
 
   public:
     static const string NODE_NAME_ATTRIBUTE;
+    static const string NODE_GRAPH_ATTRIBUTE;
     static const string OUTPUT_ATTRIBUTE;
     static const string CHANNELS_ATTRIBUTE;
 
@@ -226,21 +208,6 @@ class Input : public PortElement
     virtual ~Input() { }
 
   public:
-    /// @name Traversal
-    /// @{
-
-    /// Return the Edge with the given index that lies directly upstream from
-    /// this element in the dataflow graph.
-    Edge getUpstreamEdge(ConstMaterialPtr material = nullptr,
-                         size_t index = 0) const override;
-
-    /// Return the number of queriable upstream edges for this element.
-    size_t getUpstreamEdgeCount() const override
-    {
-        return 1;
-    }
-
-    /// @}
     /// @name Default Geometric Property
     /// @{
 
@@ -264,6 +231,24 @@ class Input : public PortElement
 
     /// Return the GeomPropDef element to use, if defined for this input.
     GeomPropDefPtr getDefaultGeomProp() const;
+
+    /// @}
+    /// @name Connections
+    /// @{
+
+    /// Return the node, if any, to which this input is connected.
+    NodePtr getConnectedNode() const override;
+
+    /// Set the output to which this input is connected.  If the output
+    /// argument is null, then any existing output connection will be cleared.
+    void setConnectedOutput(ConstOutputPtr output);
+
+    /// Return the output, if any, to which this input is connected.
+    virtual OutputPtr getConnectedOutput() const;
+
+    /// Return the input on the parent graph corresponding to the interface name
+    /// for this input.
+    InputPtr getInterfaceInput() const;
 
     /// @}
     /// @name Validation
@@ -297,8 +282,7 @@ class Output : public PortElement
 
     /// Return the Edge with the given index that lies directly upstream from
     /// this element in the dataflow graph.
-    Edge getUpstreamEdge(ConstMaterialPtr material = nullptr,
-                         size_t index = 0) const override;
+    Edge getUpstreamEdge(size_t index = 0) const override;
 
     /// Return the number of queriable upstream edges for this element.
     size_t getUpstreamEdgeCount() const override
@@ -321,19 +305,19 @@ class Output : public PortElement
 
   public:
     static const string CATEGORY;
+    static const string DEFAULT_INPUT_ATTRIBUTE;
 };
 
 /// @class InterfaceElement
 /// The base class for interface elements such as Node, NodeDef, and NodeGraph.
 ///
-/// An InterfaceElement supports a set of Parameter, Input, and Output elements,
-/// with an API for setting their values.
+/// An InterfaceElement supports a set of Input and Output elements, with an API
+/// for setting their values.
 class InterfaceElement : public TypedElement
 {
   protected:
     InterfaceElement(ElementPtr parent, const string& category, const string& name) :
         TypedElement(parent, category, name),
-        _parameterCount(0),
         _inputCount(0),
         _outputCount(0)
     {
@@ -368,56 +352,6 @@ class InterfaceElement : public TypedElement
     }
 
     /// @}
-    /// @name Parameters
-    /// @{
-
-    /// Add a Parameter to this interface.
-    /// @param name The name of the new Parameter.
-    ///     If no name is specified, then a unique name will automatically be
-    ///     generated.
-    /// @param type An optional type string.
-    /// @return A shared pointer to the new Parameter.
-    ParameterPtr addParameter(const string& name = DEFAULT_TYPE_STRING,
-                              const string& type = DEFAULT_TYPE_STRING)
-    {
-        ParameterPtr child = addChild<Parameter>(name);
-        child->setType(type);
-        return child;
-    }
-
-    /// Return the Parameter, if any, with the given name.
-    ParameterPtr getParameter(const string& name) const
-    {
-        return getChildOfType<Parameter>(name);
-    }
-
-    /// Return a vector of all Parameter elements.
-    vector<ParameterPtr> getParameters() const
-    {
-        return getChildrenOfType<Parameter>();
-    }
-
-    /// Return the number of Parameter elements.
-    size_t getParameterCount() const
-    {
-        return _parameterCount;
-    }
-
-    /// Remove the Parameter, if any, with the given name.
-    void removeParameter(const string& name)
-    {
-        removeChildOfType<Parameter>(name);
-    }
-
-    /// Return the first Parameter with the given name that belongs to this
-    /// interface, taking interface inheritance into account.
-    ParameterPtr getActiveParameter(const string& name) const;
-
-    /// Return a vector of all Parameter elements that belong to this interface,
-    /// taking interface inheritance into account.
-    vector<ParameterPtr> getActiveParameters() const;
-
-    /// @}
     /// @name Inputs
     /// @{
 
@@ -427,7 +361,7 @@ class InterfaceElement : public TypedElement
     ///     generated.
     /// @param type An optional type string.
     /// @return A shared pointer to the new Input.
-    InputPtr addInput(const string& name = DEFAULT_TYPE_STRING,
+    InputPtr addInput(const string& name = EMPTY_STRING,
                       const string& type = DEFAULT_TYPE_STRING)
     {
         InputPtr child = addChild<Input>(name);
@@ -517,6 +451,15 @@ class InterfaceElement : public TypedElement
     /// taking inheritance into account.
     vector<OutputPtr> getActiveOutputs() const;
 
+    /// Set the output to which the given input is connected, creating a
+    /// child input if needed.  If the node argument is null, then any
+    /// existing output connection on the input will be cleared.
+    void setConnectedOutput(const string& inputName, OutputPtr output);
+
+    /// Return the output connected to the given input.  If the given input is
+    /// not present, then an empty OutputPtr is returned.
+    OutputPtr getConnectedOutput(const string& inputName) const;
+
     /// @}
     /// @name Tokens
     /// @{
@@ -561,35 +504,25 @@ class InterfaceElement : public TypedElement
     /// @name Value Elements
     /// @{
 
+    /// Return the ValueElement, if any, with the given name.
+    ValueElementPtr getValueElement(const string& name) const
+    {
+        return getChildOfType<ValueElement>(name);
+    }
+
     /// Return the first value element with the given name that belongs to this
     /// interface, taking interface inheritance into account.
-    /// Examples of value elements are Parameter, Input, Output, and Token.
+    /// Examples of value elements are Input, Output, and Token.
     ValueElementPtr getActiveValueElement(const string& name) const;
 
     /// Return a vector of all value elements that belong to this interface,
     /// taking inheritance into account.
-    /// Examples of value elements are Parameter, Input, Output, and Token.
+    /// Examples of value elements are Input, Output, and Token.
     vector<ValueElementPtr> getActiveValueElements() const;
 
     /// @}
     /// @name Values
     /// @{
-
-    /// Set the typed value of a parameter by its name, creating a child element
-    /// to hold the parameter if needed.
-    template<class T> ParameterPtr setParameterValue(const string& name,
-                                                     const T& value,
-                                                     const string& type = EMPTY_STRING);
-
-    /// Return the typed value of a parameter by its name, taking both the
-    /// calling element and its declaration into account.
-    /// @param name The name of the parameter to be evaluated.
-    /// @param target An optional target name, which will be used to filter
-    ///    the declarations that are considered.
-    /// @return If the given parameter is found in this interface or its
-    ///    declaration, then a shared pointer to its value is returned;
-    ///    otherwise, an empty shared pointer is returned.
-    ValuePtr getParameterValue(const string& name, const string& target = EMPTY_STRING) const;
 
     /// Set the typed value of an input by its name, creating a child element
     /// to hold the input if needed.
@@ -602,7 +535,7 @@ class InterfaceElement : public TypedElement
     /// @param name The name of the input to be evaluated.
     /// @param target An optional target name, which will be used to filter
     ///    the declarations that are considered.
-    /// @return If the given parameter is found in this interface or its
+    /// @return If the given input is found in this interface or its
     ///    declaration, then a shared pointer to its value is returned;
     ///    otherwise, an empty shared pointer is returned.
     ValuePtr getInputValue(const string& name, const string& target = EMPTY_STRING) const;
@@ -627,6 +560,72 @@ class InterfaceElement : public TypedElement
     }
 
     /// @}
+    /// @name Target
+    /// @{
+
+    /// Set the target string of this interface.
+    void setTarget(const string& target)
+    {
+        setAttribute(TARGET_ATTRIBUTE, target);
+    }
+
+    /// Return true if the given interface has a target string.
+    bool hasTarget() const
+    {
+        return hasAttribute(TARGET_ATTRIBUTE);
+    }
+
+    /// Return the target string of this interface.
+    const string& getTarget() const
+    {
+        return getAttribute(TARGET_ATTRIBUTE);
+    }
+
+    /// @}
+    /// @name Version
+    /// @{
+
+    /// Set the version string of this interface.
+    void setVersionString(const string& version)
+    {
+        setAttribute(VERSION_ATTRIBUTE, version);
+    }
+
+    /// Return true if this interface has a version string.
+    bool hasVersionString() const
+    {
+        return hasAttribute(VERSION_ATTRIBUTE);
+    }
+
+    /// Return the version string of this interface.
+    const string& getVersionString() const
+    {
+        return getAttribute(VERSION_ATTRIBUTE);
+    }
+
+    /// Set the major and minor versions as an integer pair.
+    void setVersionIntegers(int majorVersion, int minorVersion);
+
+    /// Return the major and minor versions as an integer pair.
+    virtual std::pair<int, int> getVersionIntegers() const;
+
+    /// @}
+    /// @name Default Version
+    /// @{
+
+    /// Set the default version flag of this element.
+    void setDefaultVersion(bool defaultVersion)
+    {
+        setTypedAttribute<bool>(DEFAULT_VERSION_ATTRIBUTE, defaultVersion);
+    }
+
+    /// Return the default version flag of this element.
+    bool getDefaultVersion() const
+    {
+        return getTypedAttribute<bool>(DEFAULT_VERSION_ATTRIBUTE);
+    }
+
+    /// @}
     /// @name Utility
     /// @{
 
@@ -643,36 +642,26 @@ class InterfaceElement : public TypedElement
     /// Node is an instantiation of a given NodeDef.
     ///
     /// If the type string of the instance differs from that of the declaration,
-    /// then false is returned.  If the instance possesses a Parameter or Input
-    /// with no Parameter or Input of matching type in the declaration, then
-    /// false is returned.
+    /// then false is returned.  If the instance possesses an Input with no Input
+    /// of matching type in the declaration, then false is returned.
     bool isTypeCompatible(ConstInterfaceElementPtr declaration) const;
 
     /// @}
 
   public:
     static const string NODE_DEF_ATTRIBUTE;
+    static const string TARGET_ATTRIBUTE;
+    static const string VERSION_ATTRIBUTE;
+    static const string DEFAULT_VERSION_ATTRIBUTE;
 
   protected:
     void registerChildElement(ElementPtr child) override;
     void unregisterChildElement(ElementPtr child) override;
 
   private:
-    size_t _parameterCount;
     size_t _inputCount;
     size_t _outputCount;
 };
-
-template<class T> ParameterPtr InterfaceElement::setParameterValue(const string& name,
-                                                                   const T& value,
-                                                                   const string& type)
-{
-    ParameterPtr param = getChildOfType<Parameter>(name);
-    if (!param)
-        param = addParameter(name);
-    param->setValue(value, type);
-    return param;
-}
 
 template<class T> InputPtr InterfaceElement::setInputValue(const string& name,
                                                            const T& value,

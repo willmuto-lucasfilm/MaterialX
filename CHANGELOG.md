@@ -1,6 +1,151 @@
 # Change Log
 
-## [1.36.3] - Development
+## [1.38.1] - Development
+
+## [1.38.0] - 2021-03-02
+
+Updated the MaterialX library to the v1.38 specification.  See the [v1.38 changelist](http://www.materialx.org/assets/MaterialX.v1.38.Changelist.pdf) for full details.
+
+### Added
+- Added support for the generalized 'layer' node in Physically Based Shading.
+- Added user controls for texture baking and wedge rendering in the [MaterialX Viewer](https://github.com/materialx/MaterialX/blob/main/documents/DeveloperGuide/Viewer.md).
+- Added support for Nvidia's Material Definition Language (MDL) in MaterialX code generation.
+- Added support for inline source code in Implementation elements.
+- Added support for TargetDef elements.
+- Added viewer rendering to cloud-based tests in GitHub Actions.
+- Added support for Xcode 12.
+
+### Changed
+- Updated the set of standard nodes to match the v1.38 specification, including significant improvements to the [Physically Based Shading](http://www.materialx.org/assets/MaterialX.v1.38.PBRSpec.pdf) nodes.
+- Replaced specialized Material elements with material nodes, allowing more flexible material definitions and more consistent traversal.
+- Unified the Input and Parameter element classes, simplifying the MaterialX API and client code.
+- Updated the MaterialX viewer to use native classes for GLSL rendering and camera controls, opening the door to additional render frameworks in the future.
+- Updated the prefiltered path for specular environment rendering in GLSL, providing a closer match with the Filtered Importance Sampling path.
+- Updated the definition of Autodesk Standard Surface to version 1.0.1.
+- Updated the definition of UsdPreviewSurface to version 2.3.
+- Renamed the default branch from master to main.
+
+### Removed
+- Removed support for the 'complex_ior', 'backfacing', 'viewdirection' and 'fresnel' nodes in Physically Based Shading.
+- Removed support for the Color2 type.
+
+## [1.37.4] - 2020-12-18
+
+### Added
+- Added software rendering tests for MaterialXRenderGlsl to GitHub Actions.
+
+### Changed
+- Improved the robustness of context management in MaterialXRenderGlsl.
+
+### Fixed
+- Added a missing VAO binding to GlslRenderer\:\:drawScreenSpaceQuad.
+
+## [1.37.3] - 2020-11-24
+
+### Added
+- Added Render Transparency and Render Double-Sided options to the Advanced Settings panel of the viewer.
+- Added viewer support for partially-transparent mesh partitions.
+- Added a subsurface scattering approximation to MaterialX GLSL.
+- Added a CMake option for building shared libraries on Linux and MacOS.
+- Added support for the latest OpenImageIO interface.
+
+### Changed
+- Improved the robustness of texture baking and shader translation.
+- Unified the handling of missing images in generated GLSL.
+- Moved CI builds from Travis and Appveyor to GitHub Actions.
+
+### Fixed
+- Fixed a bug in code generation for custom BSDF/EDF graphs.
+- Fixed rendering of single-channel textures in MaterialXRenderGlsl.
+
+## [1.37.2] - 2020-09-06
+
+### Added
+- Added support for texture baking from Python, including new example script [baketextures.py](python/Scripts/baketextures.py).
+- Added support for texture baking of materials with multiple UDIMs.
+- Added support for floating-point render targets in ShaderRenderer and its subclasses, allowing for HDR texture baking.
+- Added support for displacement shaders in generated OSL.
+- Added the ShaderTranslator class, laying the groundwork for support of shader translation graphs.
+- Added Python bindings for the Image class.
+
+### Fixed
+- Fixed the alignment of environment backgrounds in the viewer.
+
+### Removed
+- Removed the CopyOptions class, making it the default behavior of Document\:\:importLibrary to skip conflicting elements.
+
+## [1.37.1] - 2020-06-04
+
+### Added
+- Added command-line options for mesh, light, and camera transforms to the viewer.
+- Added command-line options for screen dimensions and background color to the viewer.
+- Added a Light Rotation slider to the Advanced Settings panel of the viewer.
+- Added utility methods Backdrop\:\:setContainsElements and Backdrop\:\:getContainsElements.
+- Added backwards compatibility for OpenImageIO 1.x.
+- Added support for GCC 10.
+
+### Changed
+- Improved energy conservation and preservation computations in generated GLSL.
+- Upgraded Smith masking-shadowing to height-correlated form in generated GLSL.
+- Improved the robustness of tangent frame computations in MaterialXRender.
+- Renamed Backdrop\:\:setContains and getContains to Backdrop\:\:setContainsString and getContainsString for consistency.
+
+### Fixed
+- Fixed the GLSL implementation of Burley diffuse for punctual lights.
+- Fixed the upgrade path for compare nodes in v1.36 documents.
+
+## [1.37.0] - 2020-03-20
+
+Updated the MaterialX library to the v1.37 specification.  See the [v1.37 changelist](http://www.materialx.org/assets/MaterialX.v1.37REV2.Changelist.pdf) for full details.
+
+### Added
+- Added a Shadow Map option to the viewer, supported by shadowing functionality in GLSL code generation.
+- Added support for the 'uisoftmin', 'uisoftmax', and 'uistep' attributes, updating Autodesk Standard Surface to leverage these features.
+- Added support for LookGroup elements.
+- Added support for Clang 9.
+
+### Changed
+- Updated the set of standard nodes to match the v1.37 specification.
+- Unified the rules for NodeDef outputs, with all NodeDefs defining their output set through Output child elements rather than 'type' attributes.
+- Replaced GeomAttr elements with GeomProp elements.
+- Replaced backdrop nodes with Backdrop elements.
+- Aligned Matrix33 and Matrix44 with the row-vector convention, for improved consistency with Imath, USD, and other libraries.
+- Updated the stb_image library to version 2.23.
+
+## [1.36.5] - 2020-01-11
+
+### Added
+- Added a Load Environment option to the viewer, allowing arbitrary latitude-longitude HDR environments to be loaded at run-time.
+- Added an initial TextureBaker class, supporting baking of procedural content to textures.
+- Added initial support for units, including the MaterialX\:\:Unit, MaterialX\:\:UnitDef, and MaterialX\:\:UnitTypeDef classes.
+- Added support for unit conversion in shader code generation.
+- Added support for Visual Studio 2019.
+
+### Changed
+- Updated Autodesk Standard Surface to the latest interface and graph.
+- Updated the PyBind11 library to version 2.4.3.
+
+## [1.36.4] - 2019-09-26
+
+### Added
+- Added a Save Material option to the viewer.
+- Added property accessors to PropertyAssign and PropertySetAssign
+- Added Python bindings for TypeDesc and array-type Values.
+- Added Python functions getTypeString, getValueString, and createValueFromStrings.
+- Added support for GCC 9 and Clang 8.
+
+### Changed
+- Updated the interface of readFromXmlFile and writeToXmlFile to support FilePath and FileSearchPath arguments.
+- Extended Python bindings for FilePath and FileSearchPath.
+
+### Removed
+- Deprecated Python functions typeToName, valueToString, and stringToValue.
+- Removed deprecated Python functions objectToString and stringToObject.
+
+### Fixed
+- Fixed the OSL implementation of roughness_dual.
+
+## [1.36.3] - 2019-08-02
 
 Merged shader code generation and physically-based shading nodes from Autodesk's ShaderX extensions.  Added a default MaterialX viewer based on GLSL shader generation.
 
@@ -9,11 +154,13 @@ Merged shader code generation and physically-based shading nodes from Autodesk's
 - Added the MaterialXRender library, providing helper functionality for rendering MaterialX content.
 - Added the MaterialXView library, providing a default MaterialX viewer.
 - Added the physically-based shading node library (libraries/pbrlib).
-- Added a root-level 'resources' folder.
-- Added support for the 'place2d' node.
+- Added a root-level 'cmake' folder, including a standard FindMaterialX module.
+- Added a root-level 'resources' folder, including example materials and meshes.
+- Added documents for the 1.37 specification.
 
 ### Changed
 - Moved the MaterialX data libraries from 'documents/Libraries' to 'libraries'.
+- Updated MaterialX node definitions to the 1.37 specification.
 - Updated the PyBind11 library to version 2.2.4.
 
 ### Removed
@@ -52,7 +199,7 @@ Merged shader code generation and physically-based shading nodes from Autodesk's
 
 ## [1.36.0] - 2018-07-23
 
-Updated the MaterialX library to the v1.36 specification.
+Updated the MaterialX library to the v1.36 specification.  See the [v1.36 changelist](http://www.materialx.org/assets/MaterialX.v1.36.Changelist.pdf) for full details.
 
 ### Added
 - Added support for Element namespaces.
@@ -153,7 +300,7 @@ Updated the MaterialX library to the v1.36 specification.
 
 ## [1.35.0] - 2017-06-20
 
-Updated the MaterialX library to the v1.35 specification.
+Updated the MaterialX library to the v1.35 specification.  See the [v1.35 changelist](http://www.materialx.org/assets/MaterialX.v1.35.Changelist.pdf) for full details.
 
 ### Added
 - Added the MaterialX\:\:Visibility class.

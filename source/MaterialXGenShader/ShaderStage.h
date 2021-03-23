@@ -18,21 +18,17 @@
 #include <MaterialXCore/Library.h>
 #include <MaterialXCore/Node.h>
 
-#include <queue>
 #include <sstream>
-#include <unordered_map>
 
-/// Macro for being/end of statements to be picked up by a given shader stage.
-/// For shaders that are multi-stage all code generation statements adding code 
-/// to the shader should be wrapped inside such begin/end stating its target.
+// Macro for begin/end of statements to be picked up by a given shader stage.
+// For shaders that are multi-stage all code generation statements adding code 
+// to the shader should be wrapped inside such begin/end stating its target.
 #define BEGIN_SHADER_STAGE(stage, name) if (stage.getName() == name) {
 #define END_SHADER_STAGE(stage, name) }
 
 namespace MaterialX
 {
 
-/// @class Stage
-/// Shader stage identifiers.
 namespace Stage
 {
     /// Identifier for pixel stage.
@@ -65,8 +61,14 @@ class VariableBlock
     /// Get the name of this block.
     const string& getName() const { return _name; }
 
+    /// Set the name of this block.
+    void setName(const string& name) { _name = name; }
+
     /// Get the instance name of this block.
     const string& getInstance() const { return _instance; }
+
+    /// Set the instance name of this block.
+    void setInstance(const string& instance) { _instance = instance; }
 
     /// Return true if the block has no variables.
     bool empty() const { return _variableOrder.empty(); }
@@ -127,6 +129,9 @@ class ShaderStage
 
     /// Return the stage name.
     const string& getName() const { return _name; }
+
+    /// Return the stage function name.
+    const string& getFunctionName() const { return _functionName; }
 
     /// Return the stage source code.
     const string& getSourceCode() const { return _code; }
@@ -226,9 +231,18 @@ class ShaderStage
     /// Add the function definition for a node.
     void addFunctionDefinition(const ShaderNode& node, GenContext& context);
 
+    /// Set stage function name.
+    void setFunctionName(const string& functionName) 
+    { 
+        _functionName = functionName;
+    }
+
   private:
     /// Name of the stage
     const string _name;
+
+    /// Name of the stage main function
+    string _functionName;
 
     /// Syntax for the type of shader to generate.
     ConstSyntaxPtr _syntax;
@@ -237,7 +251,7 @@ class ShaderStage
     int _indentations;
 
     /// Current scope.
-    std::queue<Syntax::Punctuation> _scopes;
+    vector<Syntax::Punctuation> _scopes;
 
     /// Set of include files that has been included.
     StringSet _includes;

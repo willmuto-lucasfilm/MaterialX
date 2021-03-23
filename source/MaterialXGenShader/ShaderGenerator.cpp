@@ -9,6 +9,9 @@
 #include <MaterialXGenShader/ShaderNodeImpl.h>
 #include <MaterialXGenShader/Nodes/CompoundNode.h>
 #include <MaterialXGenShader/Nodes/SourceCodeNode.h>
+#include <MaterialXGenShader/Nodes/LayerNode.h>
+#include <MaterialXGenShader/Nodes/ThinFilmNode.h>
+#include <MaterialXGenShader/Util.h>
 
 #include <MaterialXFormat/File.h>
 
@@ -21,8 +24,7 @@
 namespace MaterialX
 {
 
-const string ShaderGenerator::SEMICOLON = ";";
-const string ShaderGenerator::COMMA = ",";
+const string ShaderGenerator::T_FILE_TRANSFORM_UV = "$fileTransformUv";
 
 //
 // ShaderGenerator methods
@@ -91,16 +93,22 @@ void ShaderGenerator::emitFunctionDefinition(const ShaderNode& node, GenContext&
 void ShaderGenerator::emitFunctionCall(const ShaderNode& node, GenContext& context, ShaderStage& stage,
                                        bool checkScope) const
 {
+    // Omit node if it's tagged to be excluded.
+    if (node.getFlag(ShaderNodeFlag::EXCLUDE_FUNCTION_CALL))
+    {
+        return;
+    }
+
     // Omit node if it's only used inside a conditional branch
     if (checkScope && node.referencedConditionally())
     {
         emitComment("Omitted node '" + node.getName() + "'. Only used in conditional node '" +
                     node.getScopeInfo().conditionalNode->getName() + "'", stage);
+        return;
     }
-    else
-    {
-        node.getImplementation().emitFunctionCall(node, context, stage);
-    }
+
+    // Emit the function call.
+    node.getImplementation().emitFunctionCall(node, context, stage);
 }
 
 void ShaderGenerator::emitFunctionDefinitions(const ShaderGraph& graph, GenContext& context, ShaderStage& stage) const
@@ -124,7 +132,7 @@ void ShaderGenerator::emitFunctionCalls(const ShaderGraph& graph, GenContext& co
 void ShaderGenerator::emitTypeDefinitions(GenContext&, ShaderStage& stage) const
 {
     // Emit typedef statements for all data types that have an alias
-    for (auto syntax : _syntax->getTypeSyntaxes())
+    for (const auto& syntax : _syntax->getTypeSyntaxes())
     {
         if (!syntax->getTypeAlias().empty())
         {
@@ -143,12 +151,20 @@ void ShaderGenerator::emitVariableDeclaration(const ShaderPort* variable, const 
                                               bool assignValue) const
 {
     string str = qualifier.empty() ? EMPTY_STRING : qualifier + " ";
-    str += _syntax->getTypeName(variable->getType()) + " " + variable->getVariable();
+    str += _syntax->getTypeName(variable->getType());
+    
+    bool haveArray = variable->getType()->isArray() && variable->getValue();
+    if (haveArray)
+    {
+        str += _syntax->getArrayTypeSuffix(variable->getType(), *variable->getValue());
+    }
+    
+    str += " " + variable->getVariable();
 
     // If an array we need an array qualifier (suffix) for the variable name
-    if (variable->getType()->isArray() && variable->getValue())
+    if (haveArray)
     {
-        str += _syntax->getArraySuffix(variable->getType(), *variable->getValue());
+        str += _syntax->getArrayVariableSuffix(variable->getType(), *variable->getValue());
     }
 
     if (assignValue)
@@ -274,9 +290,97 @@ ShaderNodeImplPtr ShaderGenerator::getImplementation(const InterfaceElement& ele
     return impl;
 }
 
-bool ShaderGenerator::remapEnumeration(const ValueElement&, const string&, std::pair<const TypeDesc*, ValuePtr>&) const
+namespace
 {
-    return false;
+    void replace(const StringMap& substitutions, ShaderPort* port)
+    {
+        string name = port->getName();
+        tokenSubstitution(substitutions, name);
+        port->setName(name);
+        string variable = port->getVariable();
+        tokenSubstitution(substitutions, variable);
+        port->setVariable(variable);
+    }
+}
+
+void ShaderGenerator::registerShaderMetadata(const DocumentPtr& doc, GenContext& context) const
+{
+    ShaderMetadataRegistryPtr registry = context.getUserData<ShaderMetadataRegistry>(ShaderMetadataRegistry::USER_DATA_NAME);
+    if (!registry)
+    {
+        registry = std::make_shared<ShaderMetadataRegistry>();
+        context.pushUserData(ShaderMetadataRegistry::USER_DATA_NAME, registry);
+    }
+
+    // Add default entries.
+    ShaderMetadataVec defaultMetadata =
+    {
+        ShaderMetadata(ValueElement::UI_NAME_ATTRIBUTE, Type::STRING),
+        ShaderMetadata(ValueElement::UI_FOLDER_ATTRIBUTE, Type::STRING),
+        ShaderMetadata(ValueElement::UI_MIN_ATTRIBUTE, nullptr),
+        ShaderMetadata(ValueElement::UI_MAX_ATTRIBUTE, nullptr),
+        ShaderMetadata(ValueElement::UI_SOFT_MIN_ATTRIBUTE, nullptr),
+        ShaderMetadata(ValueElement::UI_SOFT_MAX_ATTRIBUTE, nullptr),
+        ShaderMetadata(ValueElement::UI_STEP_ATTRIBUTE, nullptr),
+        ShaderMetadata(ValueElement::UI_ADVANCED_ATTRIBUTE, Type::BOOLEAN),
+        ShaderMetadata(ValueElement::DOC_ATTRIBUTE, Type::STRING),
+        ShaderMetadata(ValueElement::UNIT_ATTRIBUTE, Type::STRING)
+    };
+    for (auto data : defaultMetadata)
+    {
+        registry->addMetadata(data.name, data.type);
+    }
+
+    // Add entries from AttributeDefs in the document.
+    vector<AttributeDefPtr> attributeDefs = doc->getAttributeDefs();
+    for (const AttributeDefPtr& def : attributeDefs)
+    {
+        if (def->getExportable())
+        {
+            const string& attrName = def->getAttrName();
+            const TypeDesc* type = TypeDesc::get(def->getType());
+            if (!attrName.empty() && type)
+            {
+                registry->addMetadata(attrName, type, def->getValue());
+            }
+        }
+    }
+}
+
+void ShaderGenerator::replaceTokens(const StringMap& substitutions, ShaderStage& stage) const
+{
+    // Replace tokens in source code
+    tokenSubstitution(substitutions, stage._code);
+
+    // Replace tokens on shader interface
+    for (size_t i = 0; i < stage._constants.size(); ++i)
+    {
+        replace(substitutions, stage._constants[i]);
+    }
+    for (const auto& it : stage._uniforms)
+    {
+        VariableBlock& uniforms = *it.second;
+        for (size_t i = 0; i < uniforms.size(); ++i)
+        {
+            replace(substitutions, uniforms[i]);
+        }
+    }
+    for (const auto& it : stage._inputs)
+    {
+        VariableBlock& inputs = *it.second;
+        for (size_t i = 0; i < inputs.size(); ++i)
+        {
+            replace(substitutions, inputs[i]);
+        }
+    }
+    for (const auto& it : stage._outputs)
+    {
+        VariableBlock& outputs = *it.second;
+        for (size_t i = 0; i < outputs.size(); ++i)
+        {
+            replace(substitutions, outputs[i]);
+        }
+    }
 }
 
 ShaderStagePtr ShaderGenerator::createStage(const string& name, Shader& shader) const
@@ -296,6 +400,86 @@ ShaderNodeImplPtr ShaderGenerator::createCompoundImplementation(const NodeGraph&
     // The standard compound implementation
     // is the compound implementation to us by default
     return CompoundNode::create();
+}
+
+void ShaderGenerator::finalizeShaderGraph(ShaderGraph& graph)
+{
+    // Find all thin-film nodes and reconnect them to the 'thinfilm' input
+    // on BSDF nodes layered underneath.
+    for (ShaderNode* node : graph.getNodes())
+    {
+        if (node->hasClassification(ShaderNode::Classification::THINFILM))
+        {
+            ShaderOutput* output = node->getOutput();
+
+            // Change type to our 'thinfilm' data type since this
+            // is not a BSDF in our default implementation.
+            output->setType(Type::THINFILM);
+
+            // Find vertical layering nodes connected to this thinfilm.
+            vector<ShaderNode*> layerNodes;
+            for (ShaderInput* dest : output->getConnections())
+            {
+                ShaderNode* layerNode = dest->getNode();
+
+                // Make sure the connection is valid.
+                if (!layerNode->hasClassification(ShaderNode::Classification::LAYER) ||
+                    dest->getName() != LayerNode::TOP)
+                {
+                    throw ExceptionShaderGenError("Invalid connection from '" + node->getName() + "' to '" + layerNode->getName() + "." + dest->getName() + "'. " +
+                        "Thin-film can only be connected to a <layer> operator's top input.");
+                }
+
+                layerNodes.push_back(layerNode);
+            }
+
+            // Remove all connections to the thin-film node downstream.
+            output->breakConnections();
+
+            for (ShaderNode* layerNode : layerNodes)
+            {
+                ShaderInput* base = layerNode->getInput(LayerNode::BASE);
+                if (base && base->getConnection())
+                {
+                    ShaderNode* bsdf = base->getConnection()->getNode();
+
+                    // Save the output to use for bypassing the layer node below.
+                    ShaderOutput* bypassOutput = bsdf->getOutput();
+
+                    // Handle the case where the bsdf below is an additional layer operator.
+                    if (bsdf->hasClassification(ShaderNode::Classification::LAYER))
+                    {
+                        // In this case get the top bsdf since this is where microfacet bsdfs
+                        // are placed. Only one such extra layer indirection is supported.
+                        // We need this in order to support having thin-film applied to a
+                        // microfacet bsdf that itself is layered on top of a substrate.
+                        ShaderInput* top = bsdf->getInput(LayerNode::TOP);
+                        bsdf = top && top->getConnection() ? top->getConnection()->getNode() : nullptr;
+                    }
+
+                    ShaderInput* bsdfInput = bsdf ? bsdf->getInput(ThinFilmNode::THINFILM_INPUT) : nullptr;
+                    if (!bsdfInput)
+                    {
+                        throw ExceptionShaderGenError("No BSDF node supporting thin-film was found for '" + node->getName() + "'");
+                    }
+
+                    // Connect the thinfilm node to the bsdf input.
+                    bsdfInput->makeConnection(output);
+
+                    // Bypass the layer node since thin-film is now setup on the bsdf.
+                    // Iterate a copy of the connection set since the original set will
+                    // change when breaking connections.
+                    base->breakConnection();
+                    ShaderInputSet downstreamConnections = layerNode->getOutput()->getConnections();
+                    for (ShaderInput* downstream : downstreamConnections)
+                    {
+                        downstream->breakConnection();
+                        downstream->makeConnection(bypassOutput);
+                    }
+                }
+            }
+        }
+    }
 }
 
 } // namespace MaterialX

@@ -4,6 +4,7 @@
 //
 
 #include <MaterialXGenShader/GenContext.h>
+#include <MaterialXGenShader/ShaderGenerator.h>
 
 namespace MaterialX
 {
@@ -19,6 +20,23 @@ GenContext::GenContext(ShaderGeneratorPtr sg) :
     {
         throw ExceptionShaderGenError("GenContext must have a valid shader generator");
     }
+
+    // Collect and cache reserved words from the shader generator
+    StringSet reservedWords;
+
+    // Add reserved words from the syntax
+    reservedWords = _sg->getSyntax().getReservedWords();
+
+    // Add token substitution identifiers
+    for (const auto& it : _sg->getTokenSubstitutions())
+    {
+        if (!it.second.empty())
+        {
+            reservedWords.insert(it.second);
+        }
+    }
+
+    addReservedWords(reservedWords);
 }
 
 void GenContext::addNodeImplementation(const string& name, ShaderNodeImplPtr impl)
@@ -26,10 +44,18 @@ void GenContext::addNodeImplementation(const string& name, ShaderNodeImplPtr imp
     _nodeImpls[name] = impl;
 }
 
-ShaderNodeImplPtr GenContext::findNodeImplementation(const string& name)
+ShaderNodeImplPtr GenContext::findNodeImplementation(const string& name) const
 {
     auto it = _nodeImpls.find(name);
     return it != _nodeImpls.end() ? it->second : nullptr;
+}
+
+void GenContext::getNodeImplementationNames(StringSet& names)
+{
+    for (auto it : _nodeImpls)
+    {
+        names.insert(it.first);
+    }
 }
 
 void GenContext::clearNodeImplementations()

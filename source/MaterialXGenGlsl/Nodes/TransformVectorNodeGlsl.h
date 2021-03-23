@@ -11,7 +11,7 @@
 namespace MaterialX
 {
 
-/// Implementation of transformsvector node for GLSL
+/// TransformVector node implementation for GLSL
 class TransformVectorNodeGlsl : public GlslImplementation
 {
 public:
@@ -24,11 +24,6 @@ public:
 protected:
     virtual const string& getMatrix(const string& fromSpace, const string& toSpace) const;
     virtual string getHomogeneousCoordinate(const ShaderInput* in, GenContext& context) const;
-
-    static const string WORLD_MATRIX;
-    static const string WORLD_TRANSPOSE_MATRIX;
-    static const string WORLD_INVERSE_MATRIX;
-    static const string WORLD_INVERSE_TRANSPOSE_MATRIX;
 };
 
 } // namespace MaterialX

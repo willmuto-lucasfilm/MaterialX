@@ -5,16 +5,13 @@
 
 #include <MaterialXFormat/XmlIo.h>
 
-#include <MaterialXFormat/File.h>
-
 #include <MaterialXFormat/PugiXML/pugixml.hpp>
 
 #include <MaterialXCore/Types.h>
-#include <MaterialXCore/Util.h>
 
+#include <cstring>
 #include <fstream>
 #include <sstream>
-#include <string.h>
 
 using namespace pugi;
 
@@ -25,21 +22,16 @@ const string MTLX_EXTENSION = "mtlx";
 
 namespace {
 
-const string SOURCE_URI_ATTRIBUTE = "__sourceUri";
 const string XINCLUDE_TAG = "xi:include";
+const string XINCLUDE_NAMESPACE = "xmlns:xi";
+const string XINCLUDE_URL = "http://www.w3.org/2001/XInclude";
 
 void elementFromXml(const xml_node& xmlNode, ElementPtr elem, const XmlReadOptions* readOptions)
 {
-    bool skipDuplicateElements = readOptions && readOptions->skipDuplicateElements;
-
     // Store attributes in element.
     for (const xml_attribute& xmlAttr : xmlNode.attributes())
     {
-        if (xmlAttr.name() == SOURCE_URI_ATTRIBUTE)
-        {
-            elem->setSourceUri(xmlAttr.value());
-        }
-        else if (xmlAttr.name() != Element::NAME_ATTRIBUTE)
+        if (xmlAttr.name() != Element::NAME_ATTRIBUTE)
         {
             elem->setAttribute(xmlAttr.name(), xmlAttr.value());
         }
@@ -59,14 +51,23 @@ void elementFromXml(const xml_node& xmlNode, ElementPtr elem, const XmlReadOptio
             }
         }
 
-        // If requested, skip elements with duplicate names.
-        if (skipDuplicateElements && elem->getChild(name))
+        // Check for duplicate elements.
+        ConstElementPtr previous = elem->getChild(name);
+        if (previous)
         {
             continue;
         }
 
+        // Create the new element.
         ElementPtr child = elem->addChildOfCategory(category, name);
         elementFromXml(xmlChild, child, readOptions);
+
+        // Handle the interpretation of XML comments.
+        if (readOptions && readOptions->readComments && category.empty())
+        {
+            child = elem->changeChildCategory(child, CommentElement::CATEGORY);
+            child->setDocString(xmlChild.value());
+        }
     }
 }
 
@@ -88,7 +89,7 @@ void elementToXml(ConstElementPtr elem, xml_node& xmlNode, const XmlWriteOptions
 
     // Create child nodes and recurse.
     StringSet writtenSourceFiles;
-    for (ElementPtr child : elem->getChildren())
+    for (auto child : elem->getChildren())
     {
         if (elementPredicate && !elementPredicate(child))
         {
@@ -103,13 +104,32 @@ void elementToXml(ConstElementPtr elem, xml_node& xmlNode, const XmlWriteOptions
             {
                 if (!writtenSourceFiles.count(sourceUri))
                 {
+                    if (!xmlNode.attribute(XINCLUDE_NAMESPACE.c_str()))
+                    {
+                        xmlNode.append_attribute(XINCLUDE_NAMESPACE.c_str()) = XINCLUDE_URL.c_str();
+                    }
                     xml_node includeNode = xmlNode.append_child(XINCLUDE_TAG.c_str());
                     xml_attribute includeAttr = includeNode.append_attribute("href");
-                    includeAttr.set_value(sourceUri.c_str());
+                    FilePath includePath(sourceUri);
+
+                    // Write relative include paths in Posix format, and absolute
+                    // include paths in native format.
+                    FilePath::Format includeFormat = includePath.isAbsolute() ?
+                        FilePath::FormatNative : FilePath::FormatPosix;
+                    includeAttr.set_value(includePath.asString(includeFormat).c_str());
+
                     writtenSourceFiles.insert(sourceUri);
                 }
                 continue;
             }
+        }
+
+        // Write XML comments.
+        if (child->getCategory() == CommentElement::CATEGORY)
+        {
+            xml_node xmlChild = xmlNode.append_child(node_comment);
+            xmlChild.set_value(child->getAttribute(Element::DOC_ATTRIBUTE).c_str());
+            continue;
         }
 
         xml_node xmlChild = xmlNode.append_child(child->getCategory().c_str());
@@ -117,36 +137,10 @@ void elementToXml(ConstElementPtr elem, xml_node& xmlNode, const XmlWriteOptions
     }
 }
 
-void xmlDocumentFromFile(xml_document& xmlDoc, string filename, const string& searchPath)
-{
-    FileSearchPath fileSearchPath = FileSearchPath(searchPath);
-    fileSearchPath.append(getEnvironmentPath());
-
-    filename = fileSearchPath.find(filename);
-
-    xml_parse_result result = xmlDoc.load_file(filename.c_str());
-    if (!result)
-    {
-        if (result.status == xml_parse_status::status_file_not_found ||
-            result.status == xml_parse_status::status_io_error ||
-            result.status == xml_parse_status::status_out_of_memory)
-        {
-            throw ExceptionFileMissing("Failed to open file for reading: " + filename);
-        }
-        else
-        {
-            string desc = result.description();
-            string offset = std::to_string(result.offset);
-            throw ExceptionParseError("XML parse error in file: " + filename +
-                                      " (" + desc + " at character " + offset + ")");
-        }
-    }
-}
-
-void processXIncludes(DocumentPtr doc, xml_node& xmlNode, const string& searchPath, const XmlReadOptions* readOptions)
+void processXIncludes(DocumentPtr doc, xml_node& xmlNode, const FileSearchPath& searchPath, const XmlReadOptions* readOptions)
 {
     // Search path for includes. Set empty and then evaluated once in the iteration through xml includes.
-    string includeSearchPath;
+    FileSearchPath includeSearchPath;
 
     XmlReadFunction readXIncludeFunction = readOptions ? readOptions->readXIncludeFunction : readFromXmlFile;
     xml_node xmlChild = xmlNode.first_child();
@@ -174,24 +168,23 @@ void processXIncludes(DocumentPtr doc, xml_node& xmlNode, const string& searchPa
                 XmlReadOptions xiReadOptions = readOptions ? *readOptions : XmlReadOptions();
                 xiReadOptions.parentXIncludes.push_back(filename);
 
-                // Prepend the directory of the parent to accomodate
-                // includes relative the the parent file location.
-                if (includeSearchPath.empty())
+                // Prepend the directory of the parent to accommodate
+                // includes relative to the parent file location.
+                if (includeSearchPath.isEmpty())
                 {
                     string parentUri = doc->getSourceUri();
                     if (!parentUri.empty())
                     {
-                        FileSearchPath fileSearchPath(searchPath);
-                        FilePath filePath = fileSearchPath.find(parentUri);
+                        FilePath filePath = searchPath.find(parentUri);
                         if (!filePath.isEmpty())
                         {
                             // Remove the file name from the path as we want the path to the containing folder.
-                            filePath.pop();
-                            includeSearchPath = filePath.asString() + PATH_LIST_SEPARATOR + searchPath;
+                            includeSearchPath = searchPath;
+                            includeSearchPath.prepend(filePath.getParentPath());
                         }
                     }
                     // Set default search path if no parent path found
-                    if (includeSearchPath.empty())
+                    if (includeSearchPath.isEmpty())
                     {
                         includeSearchPath = searchPath;
                     }
@@ -199,7 +192,7 @@ void processXIncludes(DocumentPtr doc, xml_node& xmlNode, const string& searchPa
                 readXIncludeFunction(library, filename, includeSearchPath, &xiReadOptions);
 
                 // Import the library document.
-                doc->importLibrary(library, readOptions);
+                doc->importLibrary(library);
             }
 
             // Remove include directive.
@@ -216,12 +209,9 @@ void processXIncludes(DocumentPtr doc, xml_node& xmlNode, const string& searchPa
 
 void documentFromXml(DocumentPtr doc,
                      const xml_document& xmlDoc,
-                     const string& searchPath = EMPTY_STRING,
+                     const FileSearchPath& searchPath = FileSearchPath(),
                      const XmlReadOptions* readOptions = nullptr)
 {
-    ScopedUpdate update(doc);
-    doc->onRead();
-
     xml_node xmlRoot = xmlDoc.child(Document::CATEGORY.c_str());
     if (xmlRoot)
     {
@@ -232,6 +222,42 @@ void documentFromXml(DocumentPtr doc,
     doc->upgradeVersion();
 }
 
+void validateParseResult(xml_parse_result& result, const FilePath& filename = FilePath())
+{
+    if (result)
+    {
+        return;
+    }
+
+    if (result.status == xml_parse_status::status_file_not_found ||
+        result.status == xml_parse_status::status_io_error ||
+        result.status == xml_parse_status::status_out_of_memory)
+    {
+        throw ExceptionFileMissing("Failed to open file for reading: " + filename.asString());
+    }
+
+    string desc = result.description();
+    string offset = std::to_string(result.offset);
+    string message = "XML parse error";
+    if (!filename.isEmpty())
+    {
+        message += " in " + filename.asString();
+    }
+    message += " (" + desc + " at character " + offset + ")";
+
+    throw ExceptionParseError(message);
+}
+
+unsigned int getParseOptions(const XmlReadOptions* readOptions)
+{
+    unsigned int parseOptions = parse_default;
+    if (readOptions && readOptions->readComments)
+    {
+        parseOptions |= parse_comments;
+    }
+    return parseOptions;
+}
+
 } // anonymous namespace
 
 //
@@ -239,7 +265,8 @@ void documentFromXml(DocumentPtr doc,
 //
 
 XmlReadOptions::XmlReadOptions() :
-    readXIncludeFunction(readFromXmlFile)
+    readXIncludeFunction(readFromXmlFile),
+    readComments(false)
 {
 }
 
@@ -259,11 +286,8 @@ XmlWriteOptions::XmlWriteOptions() :
 void readFromXmlBuffer(DocumentPtr doc, const char* buffer, const XmlReadOptions* readOptions)
 {
     xml_document xmlDoc;
-    xml_parse_result result = xmlDoc.load_string(buffer);
-    if (!result)
-    {
-        throw ExceptionParseError("Parse error in readFromXmlBuffer");
-    }
+    xml_parse_result result = xmlDoc.load_string(buffer, getParseOptions(readOptions));
+    validateParseResult(result);
 
     documentFromXml(doc, xmlDoc, EMPTY_STRING, readOptions);
 }
@@ -271,19 +295,21 @@ void readFromXmlBuffer(DocumentPtr doc, const char* buffer, const XmlReadOptions
 void readFromXmlStream(DocumentPtr doc, std::istream& stream, const XmlReadOptions* readOptions)
 {
     xml_document xmlDoc;
-    xml_parse_result result = xmlDoc.load(stream);
-    if (!result)
-    {
-        throw ExceptionParseError("Parse error in readFromXmlStream");
-    }
+    xml_parse_result result = xmlDoc.load(stream, getParseOptions(readOptions));
+    validateParseResult(result);
 
     documentFromXml(doc, xmlDoc, EMPTY_STRING, readOptions);
 }
 
-void readFromXmlFile(DocumentPtr doc, const string& filename, const string& searchPath, const XmlReadOptions* readOptions)
+void readFromXmlFile(DocumentPtr doc, FilePath filename, FileSearchPath searchPath, const XmlReadOptions* readOptions)
 {
     xml_document xmlDoc;
-    xmlDocumentFromFile(xmlDoc, filename, searchPath);
+
+    searchPath.append(getEnvironmentPath());
+    filename = searchPath.find(filename);
+
+    xml_parse_result result = xmlDoc.load_file(filename.asString().c_str(), getParseOptions(readOptions));
+    validateParseResult(result, filename);
 
     // This must be done before parsing the XML as the source URI
     // is used for searching for include files.
@@ -310,18 +336,15 @@ void readFromXmlString(DocumentPtr doc, const string& str, const XmlReadOptions*
 
 void writeToXmlStream(DocumentPtr doc, std::ostream& stream, const XmlWriteOptions* writeOptions)
 {
-    ScopedUpdate update(doc);
-    doc->onWrite();
-
     xml_document xmlDoc;
     xml_node xmlRoot = xmlDoc.append_child("materialx");
     elementToXml(doc, xmlRoot, writeOptions);
     xmlDoc.save(stream, "  ");
 }
 
-void writeToXmlFile(DocumentPtr doc, const string& filename, const XmlWriteOptions* writeOptions)
+void writeToXmlFile(DocumentPtr doc, const FilePath& filename, const XmlWriteOptions* writeOptions)
 {
-    std::ofstream ofs(filename);
+    std::ofstream ofs(filename.asString());
     writeToXmlStream(doc, ofs, writeOptions);
 }
 
@@ -332,11 +355,14 @@ string writeToXmlString(DocumentPtr doc, const XmlWriteOptions* writeOptions)
     return stream.str();
 }
 
-void prependXInclude(DocumentPtr doc, const string& filename)
+void prependXInclude(DocumentPtr doc, const FilePath& filename)
 {
-    ElementPtr elem = doc->addChildOfCategory("xinclude");
-    elem->setSourceUri(filename);
-    doc->setChildIndex(elem->getName(), 0);
+    if (!filename.isEmpty())
+    {
+        ElementPtr elem = doc->addNode("xinclude");
+        elem->setSourceUri(filename.asString());
+        doc->setChildIndex(elem->getName(), 0);
+    }
 }
 
 } // namespace MaterialX

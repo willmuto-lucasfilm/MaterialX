@@ -1,18 +1,5 @@
-<!--
-
-Basic vector math function tests each test is in a separate graph for each variation in input type.
-- normalize
-- magnitude
-- dotproduct
-- crossproduct
-- rotate
-- determinant
-- transpose
-
--->
-
 <?xml version="1.0"?>
-<materialx version="1.36">
+<materialx version="1.38">
   <nodegraph name="normalize_vector2" type="" xpos="6.21379" ypos="18.74">
     <normalize name="normalize1" type="vector2" xpos="5.74483" ypos="4.74">
       <input name="in" type="vector2" value="1.0000, 0.5000" />
@@ -79,27 +66,27 @@ Basic vector math function tests each test is in a separate graph for each varia
   </nodegraph>
   <nodegraph name="rotate_vector2" type="" xpos="6.24941" ypos="23.8081">
     <position name="position1" type="vector3" xpos="3.04828" ypos="6.34">
-      <parameter name="space" type="string" value="object" />
+      <input name="space" type="string" value="object" />
     </position>
     <output name="out" type="vector2" nodename="rotate1" />
-    <rotate name="rotate1" type="vector2" xpos="5.62998" ypos="7.07692">
+    <rotate2d name="rotate1" type="vector2" xpos="5.62998" ypos="7.07692">
       <input name="in" type="vector2" value="0.0, 0.0" nodename="swizzle1" />
-      <input name="amount" type="float" value="90.0000" />
-    </rotate>
+      <input name="amount" type="float" value="1.5708" unittype="angle" unit="radian" />
+    </rotate2d>
     <swizzle name="swizzle1" type="vector2" xpos="4.31739" ypos="5.3662">
       <input name="in" type="vector3" value="0.0, 0.0, 0.0" nodename="position1" />
-      <parameter name="channels" type="string" value="xy" />
+      <input name="channels" type="string" value="xy" />
     </swizzle>
   </nodegraph>
   <nodegraph name="rotate_vector3" type="" xpos="7.24435" ypos="23.808">
     <position name="position1" type="vector3" xpos="3.53793" ypos="5.42">
-      <parameter name="space" type="string" value="object" />
+      <input name="space" type="string" value="object" />
     </position>
-    <rotate name="rotate1" type="vector3" xpos="5.19248" ypos="5.306">
+    <rotate3d name="rotate1" type="vector3" xpos="5.19248" ypos="5.306">
       <input name="in" type="vector3" value="0.0, 0.0, 0.0" nodename="position1" />
-      <input name="amount" type="float" value="180.0000" />
-      <parameter name="axis" type="vector3" value="0.0, 1.0000, 1.0000" />
-    </rotate>
+      <input name="amount" type="float" value="180.0000" unittype="angle" unit="degree" />
+      <input name="axis" type="vector3" value="0.0, 1.0000, 1.0000" />
+    </rotate3d>
     <output name="out" type="vector3" nodename="rotate1" />
   </nodegraph>
   <nodegraph name="determinant_matrix33" type="" xpos="6.26251" ypos="25.1022">
@@ -119,26 +106,26 @@ Basic vector math function tests each test is in a separate graph for each varia
       <input name="in" type="matrix33" value="1.0,1.0,0.0, 0.0,1.0,0.0, 0.0,0.0,1.0" />
     </transpose>
     <position name="position1" type="vector3" xpos="4.87243" ypos="6.7323">
-      <parameter name="space" type="string" value="object" />
+      <input name="space" type="string" value="object" />
     </position>
-    <transformvector name="transformvector1" type="vector3" xpos="6.25413" ypos="7.13256">
+    <transformmatrix name="transformvector1" type="vector3" xpos="6.25413" ypos="7.13256">
       <input name="in" type="vector3" nodename="position1" />
       <input name="mat" type="matrix33" nodename="transpose1" />
-    </transformvector>
+    </transformmatrix>
     <output name="out" type="vector3" nodename="transformvector1" />
   </nodegraph>
   <nodegraph name="transpose_matrix44" type="" xpos="7.2764" ypos="26.383">
     <position name="position1" type="vector3" xpos="3.41379" ypos="6.94">
-      <parameter name="space" type="string" value="object" />
+      <input name="space" type="string" value="object" />
     </position>
     <swizzle name="swizzle1" type="vector4" xpos="4.61194" ypos="6.66496">
       <input name="in" type="vector3" value="0.0, 0.0, 0.0" nodename="position1" />
-      <parameter name="channels" type="string" value="xyz1" />
+      <input name="channels" type="string" value="xyz1" />
     </swizzle>
-    <transformvector name="transformvector1" type="vector4" xpos="5.83715" ypos="6.95826">
+    <transformmatrix name="transformvector1" type="vector4" xpos="5.83715" ypos="6.95826">
       <input name="in" type="vector4" nodename="swizzle1" />
       <input name="mat" type="matrix44" nodename="transpose1" />
-    </transformvector>
+    </transformmatrix>
     <transpose name="transpose1" type="matrix44" xpos="4.7123" ypos="8.70598">
       <input name="in" type="matrix44" value="1.0,1.0,0.0,0.0, 0.0,1.0,0.0,0.0, 0.0,0.0,1.0,0.0, 0.0,0.0,0.0,1.0" />
     </transpose>

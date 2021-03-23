@@ -7,6 +7,7 @@
 
 #include <MaterialXGenShader/Library.h>
 #include <MaterialXGenShader/TypeDesc.h>
+#include <MaterialXGenShader/Nodes/ThinFilmNode.h>
 
 #include <sstream>
 
@@ -15,6 +16,24 @@ namespace MaterialX
 
 namespace
 {
+
+class OslBooleanTypeSyntax : public ScalarTypeSyntax
+{
+public:
+    OslBooleanTypeSyntax() :
+        ScalarTypeSyntax("int", "0", "0", EMPTY_STRING, "#define true 1\n#define false 0")
+    {}
+
+    string getValue(const Value& value, bool /*uniform*/) const override
+    {
+        return value.asA<bool>() ? "1" : "0";
+    }
+
+    string getValue(const StringVec& values, bool /*uniform*/) const override
+    {
+        return values.size() && values[0] == "true" ? "1" : "0";
+    }
+};
 
 class OslArrayTypeSyntax : public ScalarTypeSyntax
 {
@@ -88,7 +107,7 @@ class OslIntegerArrayTypeSyntax : public OslArrayTypeSyntax
     }
 };
 
-// In OSL vector2, vector4, color2 and color4 are custom struct types and require a different
+// In OSL vector2, vector4, and color4 are custom struct types and require a different
 // value syntax for uniforms. So override the aggregate type syntax to support this.
 class OslStructTypeSyntax : public AggregateTypeSyntax
 {
@@ -198,7 +217,7 @@ class OSLMatrix3TypeSyntax : public AggregateTypeSyntax
 
     string getValue(const Value& value, bool uniform) const
     {
-        Value::ScopedFloatFormatting fmt(Value::FloatFormatFixed, 3);
+        ScopedFloatFormatting fmt(Value::FloatFormatFixed, 3);
         StringVec values = splitString(value.getValueString(), ",");
         return getValue(values, uniform);
     }
@@ -232,10 +251,10 @@ class OSLMatrix3TypeSyntax : public AggregateTypeSyntax
 } // anonymous namespace
 
 const string OslSyntax::OUTPUT_QUALIFIER = "output";
+const string OslSyntax::SOURCE_FILE_EXTENSION = ".osl";
 const StringVec OslSyntax::VECTOR_MEMBERS  = { "[0]", "[1]", "[2]" };
 const StringVec OslSyntax::VECTOR2_MEMBERS = { ".x", ".y" };
 const StringVec OslSyntax::VECTOR4_MEMBERS = { ".x", ".y", ".z", ".w" };
-const StringVec OslSyntax::COLOR2_MEMBERS  = { ".r", ".a" };
 const StringVec OslSyntax::COLOR4_MEMBERS  = { ".rgb[0]", ".rgb[1]", ".rgb[2]", ".a" };
 
 //
@@ -244,8 +263,8 @@ const StringVec OslSyntax::COLOR4_MEMBERS  = { ".rgb[0]", ".rgb[1]", ".rgb[2]", 
 
 OslSyntax::OslSyntax()
 {
-    // Add in all restricted names and keywords in OSL
-    registerRestrictedNames(
+    // Add in all reserved words and keywords in OSL
+    registerReservedWords(
     {
         "and", "break", "closure", "color", "continue", "do", "else", "emit", "float", "for", "if", "illuminance",
         "illuminate", "int", "matrix", "normal", "not", "or", "output", "point", "public", "return", "string",
@@ -255,8 +274,9 @@ OslSyntax::OslSyntax()
         "signed", "sizeof", "static", "switch", "template", "this", "throw", "true", "try", "typedef", "uniform",
         "union", "unsigned", "varying", "virtual", "volatile",
         "emission", "background", "diffuse", "oren_nayer", "translucent", "phong", "ward", "microfacet",
-        "reflection", "transparent", "debug", "holdout", "subsurface",
-        ""
+        "reflection", "transparent", "debug", "holdout", "subsurface", 
+        // TODO: Add all OSL standard library functions names
+        "mix", "rotate"
     });
 
     //
@@ -298,24 +318,7 @@ OslSyntax::OslSyntax()
     registerTypeSyntax
     (
         Type::BOOLEAN,
-        std::make_shared<ScalarTypeSyntax>(
-            "int",
-            "0",
-            "0",
-            EMPTY_STRING,
-            "#define true 1\n#define false 0")
-    );
-
-    registerTypeSyntax
-    (
-        Type::COLOR2,
-        std::make_shared<OslStructTypeSyntax>(
-            "color2",
-            "color2(0.0, 0.0)",
-            "{0.0, 0.0}",
-            EMPTY_STRING,
-            EMPTY_STRING,
-            COLOR2_MEMBERS)
+        std::make_shared<OslBooleanTypeSyntax>()
     );
 
     registerTypeSyntax
@@ -444,17 +447,6 @@ OslSyntax::OslSyntax()
 
     registerTypeSyntax
     (
-        Type::ROUGHNESSINFO,
-        std::make_shared<OslStructTypeSyntax>(
-            "roughnessinfo",
-            "roughnessinfo(0.0, 0.0, 0.0, 0.0)",
-            "roughnessinfo(0.0, 0.0, 0.0, 0.0)",
-            EMPTY_STRING,
-            "struct roughnessinfo { float roughness; float alpha; float alphaX; float alphaY; };")
-    );
-
-    registerTypeSyntax
-    (
         Type::SURFACESHADER,
         std::make_shared<ScalarTypeSyntax>(
             "surfaceshader",
@@ -476,12 +468,11 @@ OslSyntax::OslSyntax()
     registerTypeSyntax
     (
         Type::DISPLACEMENTSHADER,
-        std::make_shared<OslStructTypeSyntax>(
+        std::make_shared<ScalarTypeSyntax>(
             "displacementshader",
-            "{vector(0.0), 0.0}",
-            "{vector(0.0), 0.0}",
-            EMPTY_STRING,
-            "struct displacementshader { vector offset; float scale; };")
+            "vector(0.0)",
+            "vector(0.0)",
+            "vector")
     );
 
     registerTypeSyntax
@@ -492,6 +483,17 @@ OslSyntax::OslSyntax()
             "null_closure",
             "0",
             "closure color")
+    );
+
+    registerTypeSyntax
+    (
+        Type::THINFILM,
+        std::make_shared<AggregateTypeSyntax>(
+            "thinfilm",
+            "thinfilm(0.0, 1.5)",
+            EMPTY_STRING,
+            EMPTY_STRING,
+            "struct thinfilm { float thickness; float ior; };")
     );
 }
 

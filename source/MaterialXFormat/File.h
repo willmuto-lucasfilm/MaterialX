@@ -45,8 +45,7 @@ class FilePath
 
   public:
     FilePath() :
-        _type(TypeRelative),
-        _format(FormatNative)
+        _type(TypeRelative)
     {
     }
     ~FilePath() { }
@@ -54,8 +53,7 @@ class FilePath
     bool operator==(const FilePath& rhs) const
     {
         return _vec == rhs._vec &&
-               _type == rhs._type &&
-               _format == rhs._format;
+               _type == rhs._type;
     }
     bool operator!=(const FilePath& rhs) const
     {
@@ -71,14 +69,20 @@ class FilePath
         assign(str);
     }
 
+    /// Construct a path from a C-style string.
+    FilePath(const char* str)
+    {
+        assign(str ? string(str) : EMPTY_STRING);
+    }
+
     /// Convert a path to a standard string.
     operator string() const
     {
         return asString();
     }
 
-    /// Assign a path from a standard string with the given format.
-    void assign(const string& str, Format format = FormatNative);
+    /// Assign a path from a standard string.
+    void assign(const string& str);
 
     /// Return this path as a standard string with the given format.
     string asString(Format format = FormatNative) const;
@@ -97,7 +101,7 @@ class FilePath
 
     /// Return the base name of the given path, with leading directory
     /// information removed.
-    string getBaseName() const
+    const string& getBaseName() const
     {
         if (isEmpty())
         {
@@ -106,20 +110,67 @@ class FilePath
         return _vec[_vec.size() - 1];
     }
 
+    /// Return the parent directory of the given path, if any.  If no
+    /// parent directory is present, then the empty path is returned.
+    FilePath getParentPath() const
+    {
+        FilePath parent(*this);
+        if (!parent.isEmpty())
+        {
+            parent._vec.pop_back();
+        }
+        return parent;
+    }
+
     /// Return the file extension of the given path.
     string getExtension() const
     {
-        string baseName = getBaseName();
+        const string& baseName = getBaseName();
         size_t i = baseName.rfind('.');
         return i != string::npos ? baseName.substr(i + 1) : EMPTY_STRING;
+    }
+
+    /// Add a file extension to the given path.
+    void addExtension(const string& ext)
+    {
+        assign(asString() + "." + ext);
+    }
+
+    /// Remove the file extension, if any, from the given path.
+    void removeExtension()
+    {
+        if (!isEmpty())
+        {
+            string& baseName = _vec[_vec.size() - 1];
+            size_t i = baseName.rfind('.');
+            if (i != string::npos)
+            {
+                baseName = baseName.substr(0, i);
+            }
+        }
     }
 
     /// Concatenate two paths with a directory separator, returning the
     /// combined path.
     FilePath operator/(const FilePath& rhs) const;
 
-    /// Set the path to the parent directory if one exists. 
-    void pop();
+    /// Return the number of strings in the path.
+    size_t size() const
+    {
+        return _vec.size();
+    }
+
+    /// Return the string at the given index.
+    string operator[](size_t index)
+    {
+        return _vec[index];
+    }
+
+    /// Return the const string at the given index.
+    const string& operator[](size_t index) const
+    {
+        return _vec[index];
+    }
 
     /// @}
     /// @name File System Operations
@@ -138,17 +189,19 @@ class FilePath
     FilePathVec getSubDirectories() const;
 
     /// Create a directory on the file system at the given path.
-    void createDirectory();
+    void createDirectory() const;
 
     /// @}
 
     /// Return the current working directory of the file system.
     static FilePath getCurrentPath();
 
+    /// Return the directory containing the executable module.
+    static FilePath getModulePath();
+
   private:
     StringVec _vec;
     Type _type;
-    Format _format;
 };
 
 /// @class FileSearchPath
@@ -157,9 +210,12 @@ class FilePath
 class FileSearchPath
 {
   public:
+    using Iterator = FilePathVec::iterator;
+    using ConstIterator = FilePathVec::const_iterator;
+
+  public:
     FileSearchPath()
     {
-        append(FilePath::getCurrentPath());
     }
     ~FileSearchPath() { }
 
@@ -167,21 +223,9 @@ class FileSearchPath
     /// @param searchPath A string containing a sequence of file paths joined
     ///    by separator characters.
     /// @param sep The set of separator characters used in the search path.
-    ///    Defaults to the semicolon character.
-    FileSearchPath(const string& searchPath, const string& sep = PATH_LIST_SEPARATOR) :
-        FileSearchPath()
+    ///    Defaults to the PATH_LIST_SEPARATOR character.
+    FileSearchPath(const string& searchPath, const string& sep = PATH_LIST_SEPARATOR)
     {
-        parse(searchPath, sep);
-    }
-
-    /// Parse a given path and append to the sequence
-    void parse(const string& searchPath, const string& sep = PATH_LIST_SEPARATOR)
-    {
-        if (searchPath.empty())
-        {
-            return;
-        }
-
         for (const string& path : splitString(searchPath, sep))
         {
             if (!path.empty())
@@ -189,6 +233,21 @@ class FileSearchPath
                 append(FilePath(path));
             }
         }
+    }
+
+    /// Convert this sequence to a string using the given separator.
+    string asString(const string& sep = PATH_LIST_SEPARATOR) const
+    {
+        string str;
+        for (size_t i = 0; i < _paths.size(); i++)
+        {
+            str += _paths[i];
+            if (i + 1 < _paths.size())
+            {
+                str += sep;
+            }
+        }
+        return str;
     }
 
     /// Append the given path to the sequence.
@@ -200,16 +259,10 @@ class FileSearchPath
     /// Append the given search path to the sequence.
     void append(const FileSearchPath& searchPath)
     {
-        for (const FilePath& path : searchPath.paths())
+        for (const FilePath& path : searchPath)
         {
             _paths.push_back(path);
         }
-    }
-
-    /// Get list of paths in the search path.
-    const FilePathVec& paths() const
-    {
-        return _paths;
     }
 
     /// Prepend the given path to the sequence.
@@ -218,10 +271,22 @@ class FileSearchPath
         _paths.insert(_paths.begin(), path);
     }
     
+    /// Clear all paths from the sequence.
+    void clear()
+    {
+        _paths.clear();
+    }
+
     /// Return the number of paths in the sequence.
     size_t size() const
     {
         return _paths.size();
+    }
+
+    /// Return true if the search path is empty.
+    bool isEmpty() const
+    {
+        return _paths.empty();
     }
 
     /// Return the path at the given index.
@@ -259,6 +324,17 @@ class FileSearchPath
         }
         return filename;
     }
+
+    /// @name Iterators
+    /// @{
+
+    Iterator begin() { return _paths.begin(); }
+    ConstIterator begin() const { return _paths.begin(); }
+
+    Iterator end() { return _paths.end(); }
+    ConstIterator end() const { return _paths.end(); }
+
+    /// @}
 
   private:
     FilePathVec _paths;

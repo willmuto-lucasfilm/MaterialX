@@ -20,8 +20,6 @@ namespace MaterialX
 
 class ShaderGenerator;
 class Shader;
-// Shared pointer to a Shader
-using ShaderPtr = shared_ptr<Shader>;
 
 /// @class Shader
 /// Class containing all data needed during shader generation.
@@ -52,6 +50,9 @@ class Shader
 
     /// Return a stage by index.
     const ShaderStage& getStage(size_t index) const;
+
+    /// Return if stage exists.
+    bool hasStage(const string& name);
 
     /// Return a stage by name.
     ShaderStage& getStage(const string& name);
@@ -87,6 +88,9 @@ class Shader
 
     /// Return the shader graph.
     const ShaderGraph& getGraph() const { return *_graph; }
+
+    /// Return the shader graph.
+    ShaderGraph& getGraph() { return *_graph; }
 
     /// Return true if this shader matches the given classification.
     bool hasClassification(unsigned int c) const { return _graph->hasClassification(c); }

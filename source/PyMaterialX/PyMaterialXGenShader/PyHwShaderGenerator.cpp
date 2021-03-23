@@ -6,6 +6,7 @@
 #include <PyMaterialX/PyMaterialX.h>
 
 #include <MaterialXGenShader/GenContext.h>
+#include <MaterialXGenShader/GenUserData.h>
 #include <MaterialXGenShader/HwShaderGenerator.h>
 
 #include <string>
@@ -23,9 +24,6 @@ void bindPyHwShaderGenerator(py::module& mod)
     mod.attr("HW_PUBLIC_UNIFORMS") = mx::HW::PUBLIC_UNIFORMS;
     mod.attr("HW_LIGHT_DATA") = mx::HW::LIGHT_DATA;
     mod.attr("HW_PIXEL_OUTPUTS") = mx::HW::PIXEL_OUTPUTS;
-    mod.attr("HW_NORMAL_DIR") = mx::HW::NORMAL_DIR;
-    mod.attr("HW_LIGHT_DIR") = mx::HW::LIGHT_DIR;
-    mod.attr("HW_VIEW_DIR") = mx::HW::VIEW_DIR;
     mod.attr("HW_ATTR_TRANSPARENT") =  mx::HW::ATTR_TRANSPARENT;
 
     py::class_<mx::HwShaderGenerator, mx::ShaderGenerator, mx::HwShaderGeneratorPtr>(mod, "HwShaderGenerator")
@@ -33,4 +31,11 @@ void bindPyHwShaderGenerator(py::module& mod)
         .def("bindLightShader", &mx::HwShaderGenerator::bindLightShader)
         .def("unbindLightShader", &mx::HwShaderGenerator::unbindLightShader)
         .def("unbindLightShaders", &mx::HwShaderGenerator::unbindLightShaders);
+}
+
+void bindPyHwResourceBindingContext(py::module& mod)
+{
+    py::class_<mx::HwResourceBindingContext, mx::GenUserData, mx::HwResourceBindingContextPtr>(mod, "HwResourceBindingContext")
+        .def("emitDirectives", &mx::HwResourceBindingContext::emitDirectives)
+        .def("emitResourceBindings", &mx::HwResourceBindingContext::emitResourceBindings);
 }

@@ -52,10 +52,14 @@ void HwCompoundNode::emitFunctionDefinition(HwClosureContextPtr ccx, GenContext&
     shadergen.emitLineBegin(stage);
     if (ccx)
     {
-        shadergen.emitString("void " + _functionName + ccx->getSuffix() + "(", stage);
+        // Use the first output for classifying node type for the closure context.
+        // This is only relevent for closures, and they only have a single output.
+        const TypeDesc* nodeType = _rootGraph->getOutputSocket()->getType();
+
+        shadergen.emitString("void " + _functionName + ccx->getSuffix(nodeType) + "(", stage);
 
         // Add any extra argument inputs first
-        for (const HwClosureContext::Argument& arg : ccx->getArguments())
+        for (const HwClosureContext::Argument& arg : ccx->getArguments(nodeType))
         {
             const string& type = syntax.getTypeName(arg.first);
             shadergen.emitString(delim + type + " " + arg.second, stage);
@@ -102,17 +106,8 @@ void HwCompoundNode::emitFunctionDefinition(HwClosureContextPtr ccx, GenContext&
     // Emit final results
     for (ShaderGraphOutputSocket* outputSocket : _rootGraph->getOutputSockets())
     {
-        // Check for the rare case where the output is not internally connected
-        if (!outputSocket->getConnection())
-        {
-            shadergen.emitLine(outputSocket->getVariable() + " = " + (outputSocket->getValue() ?
-                syntax.getValue(outputSocket->getType(), *outputSocket->getValue()) :
-                syntax.getDefaultValue(outputSocket->getType())), stage);
-        }
-        else
-        {
-            shadergen.emitLine(outputSocket->getVariable() + " = " + outputSocket->getConnection()->getVariable(), stage);
-        }
+        const string result = shadergen.getUpstreamResult(outputSocket, context);
+        shadergen.emitLine(outputSocket->getVariable() + " = " + result, stage);
     }
 
     // End function body
@@ -147,11 +142,15 @@ void HwCompoundNode::emitFunctionCall(const ShaderNode& node, GenContext& contex
 
         if (ccx)
         {
+            // Use the first output for classifying node type for the closure context.
+            // This is only relevent for closures, and they only have a single output.
+            const TypeDesc* nodeType = _rootGraph->getOutputSocket()->getType();
+
             // Emit function name.
-            shadergen.emitString(_functionName + ccx->getSuffix() + "(", stage);
+            shadergen.emitString(_functionName + ccx->getSuffix(nodeType) + "(", stage);
 
             // Emit extra argument.
-            for (const HwClosureContext::Argument& arg : ccx->getArguments())
+            for (const HwClosureContext::Argument& arg : ccx->getArguments(nodeType))
             {
                 shadergen.emitString(delim + arg.second, stage);
                 delim = ", ";

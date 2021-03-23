@@ -16,17 +16,12 @@ ShaderNodeImplPtr SurfaceShaderNodeGlsl::create()
     return std::make_shared<SurfaceShaderNodeGlsl>();
 }
 
-const string& SurfaceShaderNodeGlsl::getLanguage() const
-{
-    return GlslShaderGenerator::LANGUAGE;
-}
-
 const string& SurfaceShaderNodeGlsl::getTarget() const
 {
     return GlslShaderGenerator::TARGET;
 }
 
-void SurfaceShaderNodeGlsl::createVariables(const ShaderNode&, GenContext&, Shader& shader) const
+void SurfaceShaderNodeGlsl::createVariables(const ShaderNode&, GenContext& context, Shader& shader) const
 {
     // TODO: 
     // The surface shader needs position, view position and light sources. We should solve this by adding some 
@@ -37,12 +32,13 @@ void SurfaceShaderNodeGlsl::createVariables(const ShaderNode&, GenContext&, Shad
     ShaderStage& vs = shader.getStage(Stage::VERTEX);
     ShaderStage& ps = shader.getStage(Stage::PIXEL);
 
-    addStageInput(HW::VERTEX_INPUTS, Type::VECTOR3, "i_position", vs);
-    addStageConnector(HW::VERTEX_DATA, Type::VECTOR3, "positionWorld", vs, ps);
+    addStageInput(HW::VERTEX_INPUTS, Type::VECTOR3, HW::T_IN_POSITION, vs);
+    addStageConnector(HW::VERTEX_DATA, Type::VECTOR3, HW::T_POSITION_WORLD, vs, ps);
 
-    addStageUniform(HW::PRIVATE_UNIFORMS, Type::VECTOR3, "u_viewPosition", ps);
-    ShaderPort* numActiveLights = addStageUniform(HW::PRIVATE_UNIFORMS, Type::INTEGER, "u_numActiveLightSources", ps);
-    numActiveLights->setValue(Value::createValue<int>(0));
+    addStageUniform(HW::PRIVATE_UNIFORMS, Type::VECTOR3, HW::T_VIEW_POSITION, ps);
+
+    const GlslShaderGenerator& shadergen = static_cast<const GlslShaderGenerator&>(context.getShaderGenerator());
+    shadergen.addStageLightingUniforms(context, ps);
 }
 
 void SurfaceShaderNodeGlsl::emitFunctionCall(const ShaderNode& node, GenContext& context, ShaderStage& stage) const
@@ -50,7 +46,7 @@ void SurfaceShaderNodeGlsl::emitFunctionCall(const ShaderNode& node, GenContext&
     BEGIN_SHADER_STAGE(stage, Stage::VERTEX)
         VariableBlock& vertexData = stage.getOutputBlock(HW::VERTEX_DATA);
         const string prefix = vertexData.getInstance() + ".";
-        ShaderPort* position = vertexData["positionWorld"];
+        ShaderPort* position = vertexData[HW::T_POSITION_WORLD];
         if (!position->isEmitted())
         {
             position->setEmitted();

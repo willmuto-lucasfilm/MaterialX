@@ -13,11 +13,13 @@ namespace MaterialX
 const string COLOR_SEMANTIC = "color";
 const string SHADER_SEMANTIC = "shader";
 
-const string TEXTURE_NODE_GROUP = "texture";
-const string PROCEDURAL_NODE_GROUP = "procedural";
-const string GEOMETRIC_NODE_GROUP = "geometric";
-const string ADJUSTMENT_NODE_GROUP = "adjustment";
-const string CONDITIONAL_NODE_GROUP = "conditional";
+const string NodeDef::TEXTURE_NODE_GROUP = "texture";
+const string NodeDef::PROCEDURAL_NODE_GROUP = "procedural";
+const string NodeDef::GEOMETRIC_NODE_GROUP = "geometric";
+const string NodeDef::ADJUSTMENT_NODE_GROUP = "adjustment";
+const string NodeDef::CONDITIONAL_NODE_GROUP = "conditional";
+const string NodeDef::ORGANIZATION_NODE_GROUP = "organization";
+const string NodeDef::TRANSLATION_NODE_GROUP = "translation";
 
 const string NodeDef::NODE_ATTRIBUTE = "node";
 const string NodeDef::NODE_GROUP_ATTRIBUTE = "nodegroup";
@@ -25,91 +27,80 @@ const string TypeDef::SEMANTIC_ATTRIBUTE = "semantic";
 const string TypeDef::CONTEXT_ATTRIBUTE = "context";
 const string Implementation::FILE_ATTRIBUTE = "file";
 const string Implementation::FUNCTION_ATTRIBUTE = "function";
-const string Implementation::LANGUAGE_ATTRIBUTE = "language";
+const string UnitDef::UNITTYPE_ATTRIBUTE = "unittype";
+const string AttributeDef::ATTRNAME_ATTRIBUTE = "attrname";
+const string AttributeDef::VALUE_ATTRIBUTE = "value";
+const string AttributeDef::ELEMENTS_ATTRIBUTE = "elements";
+const string AttributeDef::EXPORTABLE_ATTRIBUTE = "exportable";
 
 //
 // NodeDef methods
 //
 
-InterfaceElementPtr NodeDef::getImplementation(const string& target, const string& language) const
+const string& NodeDef::getType() const
+{
+    const vector<OutputPtr>& activeOutputs = getActiveOutputs();
+
+    size_t numActiveOutputs = activeOutputs.size();
+    if (numActiveOutputs > 1)
+    {
+        return MULTI_OUTPUT_TYPE_STRING;
+    }
+    else if (numActiveOutputs == 1)
+    {
+        return activeOutputs[0]->getType();
+    }
+    else
+    {
+        return DEFAULT_TYPE_STRING;
+    }
+}
+
+InterfaceElementPtr NodeDef::getImplementation(const string& target) const
 {
     vector<InterfaceElementPtr> interfaces = getDocument()->getMatchingImplementations(getQualifiedName(getName()));
     vector<InterfaceElementPtr> secondary = getDocument()->getMatchingImplementations(getName());
     interfaces.insert(interfaces.end(), secondary.begin(), secondary.end());
 
-    // Search for the first implementation which matches a given language string.
-    // If no language is specified then return the first implementation found.
-    bool matchLanguage = !language.empty();
-    for (InterfaceElementPtr interface : interfaces)
+    if (target.empty())
     {
-        ImplementationPtr implement = interface->asA<Implementation>();
-        if (!implement||
-            !targetStringsMatch(interface->getTarget(), target) ||
-            !isVersionCompatible(interface))
-        {
-            continue;
-        }
-        if (!matchLanguage || 
-            implement->getLanguage() == language)
-        {
-            return interface;
-        }
+        return !interfaces.empty() ? interfaces[0] : InterfaceElementPtr();
     }
 
-    // Search for a node graph match if no implementation match was found.
-    // There is no language check as node graphs are considered to be language independent.
-    for (InterfaceElementPtr interface : interfaces)
+    // Get all candidate targets matching the given target,
+    // taking inheritance into account.
+    const TargetDefPtr targetDef = getDocument()->getTargetDef(target);
+    const StringVec candidateTargets = targetDef ? targetDef->getMatchingTargets() : StringVec();
+
+    // Search the candidate targets in order
+    for (const string& candidateTarget : candidateTargets)
     {
-        if (interface->isA<Implementation>() || 
-            !targetStringsMatch(interface->getTarget(), target) ||
-            !isVersionCompatible(interface))
+        for (InterfaceElementPtr interface : interfaces)
         {
-            continue;
+            if (targetStringsMatch(interface->getTarget(), candidateTarget))
+            {
+                return interface;
+            }
         }
-        return interface;
     }
 
     return InterfaceElementPtr();
 }
 
-vector<ShaderRefPtr> NodeDef::getInstantiatingShaderRefs() const
-{
-    vector<ShaderRefPtr> shaderRefs;
-    for (MaterialPtr mat : getDocument()->getMaterials())
-    {
-        for (ShaderRefPtr shaderRef : mat->getShaderRefs())
-        {
-            if (shaderRef->getNodeDef()->hasInheritedBase(getSelf()))
-            {
-                shaderRefs.push_back(shaderRef);
-            }
-        }
-    }
-    return shaderRefs;
-}
-
 bool NodeDef::validate(string* message) const
 {
     bool res = true;
-    validateRequire(hasType(), res, message, "Missing type");
-    if (isMultiOutputType())
-    {
-        validateRequire(getOutputCount() >= 2, res, message, "Multioutput nodedefs must have two or more output ports");
-    }
-    else
-    {
-        validateRequire(getOutputCount() == 0, res, message, "Only multioutput nodedefs support output ports");
-    }
+    validateRequire(!hasType(), res, message, "Nodedef should not have a type but an explicit output");
     return InterfaceElement::validate(message) && res;
 }
 
-bool NodeDef::isVersionCompatible(ConstElementPtr elem) const
+bool NodeDef::isVersionCompatible(const string& version) const
 {
-    if (getVersionIntegers() == elem->getVersionIntegers())
+    if (getVersionString() == version)
     {
         return true;
     }
-    if (getDefaultVersion() && !elem->hasVersionString())
+    if (getDefaultVersion() && version.empty())
     {
         return true;
     }
@@ -142,9 +133,41 @@ NodeDefPtr Implementation::getNodeDef() const
     return resolveRootNameReference<NodeDef>(getNodeDefString());
 }
 
+bool Implementation::validate(string* message) const
+{
+    bool res = true;
+    validateRequire(!hasVersionString(), res, message, "Implementation elements do not support version strings");
+    return InterfaceElement::validate(message) && res;
+}
+
 ConstNodeDefPtr Implementation::getDeclaration(const string&) const
 {
     return getNodeDef();
+}
+
+StringVec TargetDef::getMatchingTargets() const
+{
+    StringVec result = { getName() };
+    ElementPtr base = getInheritsFrom();
+    while (base)
+    {
+        result.push_back(base->getName());
+        base = base->getInheritsFrom();
+    }
+    return result;
+}
+
+vector<UnitDefPtr> UnitTypeDef::getUnitDefs() const
+{
+    vector<UnitDefPtr> unitDefs;
+    for (UnitDefPtr unitDef : getDocument()->getChildrenOfType<UnitDef>())
+    {
+        if (unitDef->getUnitType() == _name)
+        {
+            unitDefs.push_back(unitDef);
+        }
+    }
+    return unitDefs;
 }
 
 } // namespace MaterialX

@@ -9,6 +9,8 @@
 #include <MaterialXCore/Node.h>
 #include <MaterialXCore/Util.h>
 
+#include <iterator>
+
 namespace MaterialX
 {
 
@@ -16,11 +18,9 @@ const string Element::NAME_ATTRIBUTE = "name";
 const string Element::FILE_PREFIX_ATTRIBUTE = "fileprefix";
 const string Element::GEOM_PREFIX_ATTRIBUTE = "geomprefix";
 const string Element::COLOR_SPACE_ATTRIBUTE = "colorspace";
-const string Element::TARGET_ATTRIBUTE = "target";
-const string Element::VERSION_ATTRIBUTE = "version";
-const string Element::DEFAULT_VERSION_ATTRIBUTE = "isdefaultversion";
 const string Element::INHERIT_ATTRIBUTE = "inherit";
 const string Element::NAMESPACE_ATTRIBUTE = "namespace";
+const string Element::DOC_ATTRIBUTE = "doc";
 const string TypedElement::TYPE_ATTRIBUTE = "type";
 const string ValueElement::VALUE_ATTRIBUTE = "value";
 const string ValueElement::INTERFACE_NAME_ATTRIBUTE = "interfacename";
@@ -32,6 +32,13 @@ const string ValueElement::UI_NAME_ATTRIBUTE = "uiname";
 const string ValueElement::UI_FOLDER_ATTRIBUTE = "uifolder";
 const string ValueElement::UI_MIN_ATTRIBUTE = "uimin";
 const string ValueElement::UI_MAX_ATTRIBUTE = "uimax";
+const string ValueElement::UI_SOFT_MIN_ATTRIBUTE = "uisoftmin";
+const string ValueElement::UI_SOFT_MAX_ATTRIBUTE = "uisoftmax";
+const string ValueElement::UI_STEP_ATTRIBUTE = "uistep";
+const string ValueElement::UI_ADVANCED_ATTRIBUTE = "uiadvanced";
+const string ValueElement::UNIT_ATTRIBUTE = "unit";
+const string ValueElement::UNITTYPE_ATTRIBUTE = "unittype";
+const string ValueElement::UNIFORM_ATTRIBUTE = "uniform";
 
 Element::CreatorMap Element::_creatorMap;
 
@@ -76,16 +83,13 @@ bool Element::operator!=(const Element& rhs) const
 
 void Element::setName(const string& name)
 {
-    DocumentPtr doc = getDocument();
     ElementPtr parent = getParent();
     if (parent && parent->_childMap.count(name) && name != getName())
     {
         throw Exception("Element name is not unique at the given scope: " + name);
     }
 
-    // Handle change notifications.
-    ScopedUpdate update(doc);
-    doc->onSetAttribute(getSelf(), NAME_ATTRIBUTE, name);
+    getDocument()->invalidateCache();
 
     if (parent)
     {
@@ -114,10 +118,10 @@ string Element::getNamePath(ConstElementPtr relativeTo) const
     return res;
 }
 
-ElementPtr Element::getDescendant(const string& namePath)
+ElementPtr Element::getDescendant(const string& namePath) const
 {
     const StringVec nameVec = splitString(namePath, NAME_PATH_SEPARATOR);
-    ElementPtr elem = getSelf();
+    ElementPtr elem = getSelfNonConst();
     for (const string& name : nameVec)
     {
         elem = elem->getChild(name);
@@ -129,37 +133,9 @@ ElementPtr Element::getDescendant(const string& namePath)
     return elem;
 }
 
-std::pair<int, int> Element::getVersionIntegers() const
-{
-    string versionString = getVersionString();
-    StringVec splitVersion = splitString(versionString, ".");
-    try
-    {
-        if (splitVersion.size() == 2)
-        {
-            return {std::stoi(splitVersion[0]), std::stoi(splitVersion[1])};
-        }
-        else if (splitVersion.size() == 1)
-        {
-            return {std::stoi(splitVersion[0]), 0};
-        }
-    }
-    catch (std::invalid_argument&)
-    {
-    }
-    catch (std::out_of_range&)
-    {
-    }
-    return {0, 0};
-}
-
 void Element::registerChildElement(ElementPtr child)
 {
-    DocumentPtr doc = getDocument();
-
-    // Handle change notifications.
-    ScopedUpdate update(doc);
-    doc->onAddElement(getSelf(), child);
+    getDocument()->invalidateCache();
 
     _childMap[child->getName()] = child;
     _childOrder.push_back(child);
@@ -167,11 +143,7 @@ void Element::registerChildElement(ElementPtr child)
 
 void Element::unregisterChildElement(ElementPtr child)
 {
-    DocumentPtr doc = getDocument();
-
-    // Handle change notifications.
-    ScopedUpdate update(doc);
-    doc->onRemoveElement(getSelf(), child);
+    getDocument()->invalidateCache();
 
     _childMap.erase(child->getName());
     _childOrder.erase(
@@ -220,11 +192,7 @@ void Element::removeChild(const string& name)
 
 void Element::setAttribute(const string& attrib, const string& value)
 {
-    DocumentPtr doc = getDocument();
-
-    // Handle change notifications.
-    ScopedUpdate update(doc);
-    doc->onSetAttribute(getSelf(), attrib, value);
+    getDocument()->invalidateCache();
 
     if (!_attributeMap.count(attrib))
     {
@@ -238,11 +206,7 @@ void Element::removeAttribute(const string& attrib)
     StringMap::iterator it = _attributeMap.find(attrib);
     if (it != _attributeMap.end())
     {
-        DocumentPtr doc = getDocument();
-
-        // Handle change notifications.
-        ScopedUpdate update(doc);
-        doc->onRemoveAttribute(getSelf(), attrib);
+        getDocument()->invalidateCache();
 
         _attributeMap.erase(it);
         _attributeOrder.erase(
@@ -260,18 +224,15 @@ template<class T> shared_ptr<const T> Element::asA() const
     return std::dynamic_pointer_cast<const T>(getSelf());
 }
 
-ElementPtr Element::addChildOfCategory(const string& category,
-                                       const string& name)
+ElementPtr Element::addChildOfCategory(const string& category, string name)
 {
-    string childName = name;
-    if (childName.empty())
+    if (name.empty())
     {
-        childName = createValidChildName(category + "1");
+        name = createValidChildName(category + "1");
     }
-
-    if (_childMap.count(childName))
+    if (_childMap.count(name))
     {
-        throw Exception("Child name is not unique: " + childName);
+        throw Exception("Child name is not unique: " + name);
     }
 
     ElementPtr child;
@@ -280,27 +241,41 @@ ElementPtr Element::addChildOfCategory(const string& category,
     CreatorMap::iterator it = _creatorMap.find(category);
     if (it != _creatorMap.end())
     {
-        child = it->second(getSelf(), childName);
+        child = it->second(getSelf(), name);
     }
 
     // Check for a node within a graph.
     if (!child && isA<GraphElement>())
     {
-        child = createElement<Node>(getSelf(), childName);
+        child = createElement<Node>(getSelf(), name);
         child->setCategory(category);
     }
 
     // If no match was found, then create a generic element.
     if (!child)
     {
-        child = createElement<GenericElement>(getSelf(), childName);
+        child = createElement<GenericElement>(getSelf(), name);
         child->setCategory(category);
     }
 
-    // Register the child.
     registerChildElement(child);
 
     return child;
+}
+
+ElementPtr Element::changeChildCategory(ElementPtr child, const string& category)
+{
+    int childIndex = getChildIndex(child->getName());
+    if (childIndex == -1)
+    {
+        return nullptr;
+    }
+
+    removeChild(child->getName());
+    ElementPtr newChild = addChildOfCategory(category, child->getName());
+    setChildIndex(child->getName(), childIndex);
+    newChild->copyContentFrom(child);
+    return newChild;
 }
 
 ElementPtr Element::getRoot()
@@ -353,19 +328,19 @@ TreeIterator Element::traverseTree() const
     return TreeIterator(getSelfNonConst());
 }
 
-GraphIterator Element::traverseGraph(ConstMaterialPtr material) const
+GraphIterator Element::traverseGraph() const
 {
-    return GraphIterator(getSelfNonConst(), material);
+    return GraphIterator(getSelfNonConst());
 }
 
-Edge Element::getUpstreamEdge(ConstMaterialPtr, size_t) const
+Edge Element::getUpstreamEdge(size_t) const
 {
     return NULL_EDGE;
 }
 
-ElementPtr Element::getUpstreamElement(ConstMaterialPtr material, size_t index) const
+ElementPtr Element::getUpstreamElement(size_t index) const
 {
-    return getUpstreamEdge(material, index).getUpstreamElement();
+    return getUpstreamEdge(index).getUpstreamElement();
 }
 
 InheritanceIterator Element::traverseInheritance() const
@@ -373,26 +348,26 @@ InheritanceIterator Element::traverseInheritance() const
     return InheritanceIterator(getSelf());
 }
 
-void Element::copyContentFrom(const ConstElementPtr& source, const CopyOptions* copyOptions)
+void Element::copyContentFrom(const ConstElementPtr& source)
 {
-    DocumentPtr doc = getDocument();
-    bool skipDuplicateElements = copyOptions && copyOptions->skipDuplicateElements;
-
-    // Handle change notifications.
-    ScopedUpdate update(doc);
-    doc->onCopyContent(getSelf());
+    getDocument()->invalidateCache();
 
     _sourceUri = source->_sourceUri;
     _attributeMap = source->_attributeMap;
     _attributeOrder = source->_attributeOrder;
 
-    for (const ConstElementPtr& child : source->getChildren())
+    for (auto child : source->getChildren())
     {
         const string& name = child->getName();
-        if (skipDuplicateElements && getChild(name))
+
+        // Check for duplicate elements.
+        ConstElementPtr previous = getChild(name);
+        if (previous)
         {
             continue;
         }
+
+        // Create the copied element.
         ElementPtr childCopy = addChildOfCategory(child->getCategory(), name);
         childCopy->copyContentFrom(child);
     }
@@ -400,21 +375,13 @@ void Element::copyContentFrom(const ConstElementPtr& source, const CopyOptions* 
 
 void Element::clearContent()
 {
-    DocumentPtr doc = getDocument();
+    getDocument()->invalidateCache();
 
-    // Handle change notifications.
-    ScopedUpdate update(doc);
-    doc->onClearContent(getSelf());
-
-    _sourceUri = EMPTY_STRING;
+    _sourceUri.clear();
     _attributeMap.clear();
     _attributeOrder.clear();
-
-    vector<ElementPtr> children = getChildren();
-    for (ElementPtr child : children)
-    {
-        removeChild(child->getName());
-    }
+    _childMap.clear();
+    _childOrder.clear();
 }
 
 bool Element::validate(string* message) const
@@ -426,7 +393,7 @@ bool Element::validate(string* message) const
         bool validInherit = getInheritsFrom() && getInheritsFrom()->getCategory() == getCategory();
         validateRequire(validInherit, res, message, "Invalid element inheritance");
     }
-    for (ElementPtr child : getChildren())
+    for (auto child : getChildren())
     {
         res = child->validate(message) && res;
     }
@@ -434,12 +401,9 @@ bool Element::validate(string* message) const
     return res;
 }
 
-StringResolverPtr Element::createStringResolver(const string& geom,
-                                                ConstMaterialPtr material,
-                                                const string& target,
-                                                const string& type) const
+StringResolverPtr Element::createStringResolver(const string& geom) const
 {
-    StringResolverPtr resolver = std::make_shared<StringResolver>();
+    StringResolverPtr resolver = StringResolver::create();
 
     // Compute file and geom prefixes as this scope.
     resolver->setFilePrefix(getActiveFilePrefix());
@@ -456,21 +420,6 @@ StringResolverPtr Element::createStringResolver(const string& geom,
             {
                 string key = "<" + token->getName() + ">";
                 string value = token->getResolvedValueString();
-                resolver->setFilenameSubstitution(key, value);
-            }
-        }
-    }
-
-    // If a material is specified, then apply it to the filename map.
-    if (material)
-    {
-        for (TokenPtr token : material->getPrimaryShaderTokens(target, type))
-        {
-            ValuePtr boundValue = token->getBoundValue(material);
-            if (boundValue->isA<string>())
-            {
-                string key = "[" + token->getName() + "]";
-                string value = boundValue->asA<string>();
                 resolver->setFilenameSubstitution(key, value);
             }
         }
@@ -532,28 +481,8 @@ string ValueElement::getResolvedValueString(StringResolverPtr resolver) const
     return resolver->resolve(getValueString(), getType());
 }
 
-ValuePtr ValueElement::getBoundValue(ConstMaterialPtr material) const
-{
-    ElementPtr upstreamElem = getUpstreamElement(material);
-    if (!upstreamElem)
-    {
-        return getDefaultValue();
-    }
-    if (upstreamElem->isA<ValueElement>())
-    {
-        return upstreamElem->asA<ValueElement>()->getValue();
-    }
-    return ValuePtr();
-}
-
 ValuePtr ValueElement::getDefaultValue() const
 {
-    if (hasValue())
-    {
-        return getValue();
-    }
-
-    // Return the value, if any, stored in our declaration.
     ConstElementPtr parent = getParent();
     ConstInterfaceElementPtr interface = parent ? parent->asA<InterfaceElement>() : nullptr;
     if (interface)
@@ -571,6 +500,26 @@ ValuePtr ValueElement::getDefaultValue() const
     return ValuePtr();
 }
 
+const string& ValueElement::getActiveUnit() const
+{
+    // Return the unit, if any, stored in our declaration.
+    ConstElementPtr parent = getParent();
+    ConstInterfaceElementPtr interface = parent ? parent->asA<InterfaceElement>() : nullptr;
+    if (interface)
+    {
+        ConstNodeDefPtr decl = interface->getDeclaration();
+        if (decl)
+        {
+            ValueElementPtr value = decl->getActiveValueElement(getName());
+            if (value)
+            {
+                return value->getUnit();
+            }
+        }
+    }
+    return EMPTY_STRING;
+}
+
 bool ValueElement::validate(string* message) const
 {
     bool res = true;
@@ -580,6 +529,7 @@ bool ValueElement::validate(string* message) const
     }
     if (hasInterfaceName())
     {
+        validateRequire(isA<Input>(), res, message, "Only input elements support interface names");
         ConstNodeGraphPtr nodeGraph = getAncestorOfType<NodeGraph>();
         NodeDefPtr nodeDef = nodeGraph ? nodeGraph->getNodeDef() : nullptr;
         if (nodeDef)
@@ -588,44 +538,47 @@ bool ValueElement::validate(string* message) const
             validateRequire(valueElem != nullptr, res, message, "Interface name not found in referenced NodeDef");
             if (valueElem)
             {
-                validateRequire(valueElem->getType() == getType(), res, message, "Interface name refers to value element of a different type");
-            }
-        }
-    }
-    return TypedElement::validate(message) && res;
-}
-
-//
-// Token methods
-//
-
-Edge Token::getUpstreamEdge(ConstMaterialPtr material, size_t index) const
-{
-    if (material && index < getUpstreamEdgeCount())
-    {
-        ConstElementPtr parent = getParent();
-        ConstInterfaceElementPtr interface = parent ? parent->asA<InterfaceElement>() : nullptr;
-        ConstNodeDefPtr nodeDef = interface ? interface->getDeclaration() : nullptr;
-        if (nodeDef)
-        {
-            // Apply BindToken elements to the Token.
-            for (ShaderRefPtr shaderRef : material->getActiveShaderRefs())
-            {
-                if (shaderRef->getNodeDef()->hasInheritedBase(nodeDef))
+                ConstPortElementPtr portElem = asA<PortElement>();
+                if (portElem && portElem->hasChannels())
                 {
-                    for (BindTokenPtr bindToken : shaderRef->getBindTokens())
-                    {
-                        if (bindToken->getName() == getName() && bindToken->hasValue())
-                        {
-                            return Edge(getSelfNonConst(), nullptr, bindToken);
-                        }
-                    }
+                    bool valid = portElem->validChannelsString(portElem->getChannels(), valueElem->getType(), getType());
+                    validateRequire(valid, res, message, "Invalid channels string for interface name");
+                }
+                else
+                {
+                    validateRequire(getType() == valueElem->getType(), res, message, "Interface name refers to value element of a different type");
                 }
             }
         }
     }
-
-    return NULL_EDGE;
+    UnitTypeDefPtr unitTypeDef;
+    if (hasUnitType())
+    {
+        const string& unittype = getUnitType();
+        if (!unittype.empty())
+        {
+            unitTypeDef = getDocument()->getUnitTypeDef(unittype);
+            validateRequire(unitTypeDef != nullptr, res, message, "Unit type definition does not exist in document");
+        }
+    }            
+    if (hasUnit())
+    {
+        bool foundUnit = false;
+        if (unitTypeDef)
+        {
+            const string& unit = getUnit();
+            for (UnitDefPtr unitDef : unitTypeDef->getUnitDefs())
+            {
+                if (unitDef->getUnit(unit))
+                {
+                    foundUnit = true;
+                    break;
+                }
+            }
+        }
+        validateRequire(foundUnit, res, message, "Unit definition does not exist in document");
+    }
+    return TypedElement::validate(message) && res;
 }
 
 //
@@ -675,6 +628,17 @@ bool targetStringsMatch(const string& target1, const string& target2)
     return !matches.empty();
 }
 
+string prettyPrint(ConstElementPtr elem)
+{
+    string text;
+    for (TreeIterator it = elem->traverseTree().begin(); it != TreeIterator::end(); ++it)
+    {
+        string indent(it.getElementDepth() * 2, ' ');
+        text += indent + it.getElement()->asString() + "\n";
+    }
+    return text;
+}
+
 //
 // Element registry class
 //
@@ -710,33 +674,35 @@ const string T::CATEGORY(category);                     \
 ElementRegistry<T> registry##T;                         \
 INSTANTIATE_SUBCLASS(T)
 
-INSTANTIATE_CONCRETE_SUBCLASS(BindParam, "bindparam")
-INSTANTIATE_CONCRETE_SUBCLASS(BindInput, "bindinput")
-INSTANTIATE_CONCRETE_SUBCLASS(BindToken, "bindtoken")
+INSTANTIATE_CONCRETE_SUBCLASS(AttributeDef, "attributedef")
+INSTANTIATE_CONCRETE_SUBCLASS(Backdrop, "backdrop")
 INSTANTIATE_CONCRETE_SUBCLASS(Collection, "collection")
+INSTANTIATE_CONCRETE_SUBCLASS(CommentElement, "comment")
 INSTANTIATE_CONCRETE_SUBCLASS(Document, "materialx")
 INSTANTIATE_CONCRETE_SUBCLASS(GenericElement, "generic")
-INSTANTIATE_CONCRETE_SUBCLASS(GeomAttr, "geomattr")
 INSTANTIATE_CONCRETE_SUBCLASS(GeomInfo, "geominfo")
+INSTANTIATE_CONCRETE_SUBCLASS(GeomProp, "geomprop")
 INSTANTIATE_CONCRETE_SUBCLASS(GeomPropDef, "geompropdef")
 INSTANTIATE_CONCRETE_SUBCLASS(Implementation, "implementation")
 INSTANTIATE_CONCRETE_SUBCLASS(Input, "input")
 INSTANTIATE_CONCRETE_SUBCLASS(Look, "look")
-INSTANTIATE_CONCRETE_SUBCLASS(Material, "material")
+INSTANTIATE_CONCRETE_SUBCLASS(LookGroup, "lookgroup")
 INSTANTIATE_CONCRETE_SUBCLASS(MaterialAssign, "materialassign")
 INSTANTIATE_CONCRETE_SUBCLASS(Member, "member")
 INSTANTIATE_CONCRETE_SUBCLASS(Node, "node")
 INSTANTIATE_CONCRETE_SUBCLASS(NodeDef, "nodedef")
 INSTANTIATE_CONCRETE_SUBCLASS(NodeGraph, "nodegraph")
 INSTANTIATE_CONCRETE_SUBCLASS(Output, "output")
-INSTANTIATE_CONCRETE_SUBCLASS(Parameter, "parameter")
 INSTANTIATE_CONCRETE_SUBCLASS(Property, "property")
 INSTANTIATE_CONCRETE_SUBCLASS(PropertyAssign, "propertyassign")
 INSTANTIATE_CONCRETE_SUBCLASS(PropertySet, "propertyset")
 INSTANTIATE_CONCRETE_SUBCLASS(PropertySetAssign, "propertysetassign")
-INSTANTIATE_CONCRETE_SUBCLASS(ShaderRef, "shaderref")
+INSTANTIATE_CONCRETE_SUBCLASS(TargetDef, "targetdef")
 INSTANTIATE_CONCRETE_SUBCLASS(Token, "token")
 INSTANTIATE_CONCRETE_SUBCLASS(TypeDef, "typedef")
+INSTANTIATE_CONCRETE_SUBCLASS(Unit, "unit")
+INSTANTIATE_CONCRETE_SUBCLASS(UnitDef, "unitdef")
+INSTANTIATE_CONCRETE_SUBCLASS(UnitTypeDef, "unittypedef")
 INSTANTIATE_CONCRETE_SUBCLASS(Variant, "variant")
 INSTANTIATE_CONCRETE_SUBCLASS(VariantAssign, "variantassign")
 INSTANTIATE_CONCRETE_SUBCLASS(VariantSet, "variantset")

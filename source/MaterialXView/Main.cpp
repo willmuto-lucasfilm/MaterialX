@@ -1,155 +1,259 @@
 #include <MaterialXView/Viewer.h>
 
+#include <MaterialXCore/Util.h>
+
 #include <iostream>
 
 NANOGUI_FORCE_DISCRETE_GPU();
 
-const std::string docstring = 
+const std::string options = 
 " Options: \n"
-"    --library [PATH]         Additional library folder location\n"
-"    --path [PATH]            Additional file search path location\n"
-"    --mesh [PATH]            Mesh filename (Default: resources/Geometry/shaderball.obj)\n"
-"    --material [PATH]        Material filename\n"
-"    --remap [TOKEN1:TOKEN2]  Remap one token to another when MaterialX document is loaded\n"
-"    --skip [STRING ...]      Skip elements with the given name attribute\n"
-"    --terminator [STRING]    Enforce the given terminator string for file prefixes\n"
-"    --envMethod [INTEGER]    Environment lighting method. 0 = filtered importance sampling (default); 1 = prefiltered environment maps.\n"
-"    --envRad [PATH]          Specify the environment radiance HDR (Default: resources/Images/san_giuseppe_bridge.hdr)\n"
-"    --envIrrad [PATH]        Specify the environment irradiance HDR (Default: resources/Images/san_giuseppe_bridge_diffuse.hdr)\n"
-"    --msaa [INTEGER]         Multisampling count for anti-aliasing (Default: 0)\n"
-"    -h, --help               Print this help\n";
+"    --material [FILENAME]          Specify the filename of the MTLX document to be displayed in the viewer\n"
+"    --mesh [FILENAME]              Specify the filename of the OBJ mesh to be displayed in the viewer\n"
+"    --meshRotation [VECTOR3]       Specify the rotation of the displayed mesh as three comma-separated floats, representing rotations in degrees about the X, Y, and Z axes (defaults to 0,0,0)\n"
+"    --meshScale [FLOAT]            Specify the uniform scale of the displayed mesh\n"
+"    --cameraPosition [VECTOR3]     Specify the position of the camera as three comma-separated floats (defaults to 0,0,5)\n"
+"    --cameraTarget [VECTOR3]       Specify the position of the camera target as three comma-separated floats (defaults to 0,0,0)\n"
+"    --cameraViewAngle [FLOAT]      Specify the view angle of the camera (defaults to 45)\n"
+"    --cameraZoom [FLOAT]           Specify the amount to zoom the camera. (defaults to 1.0)\n"
+"    --envRad [FILENAME]            Specify the filename of the environment light to display, stored as HDR environment radiance in the latitude-longitude format\n"
+"    --envMethod [INTEGER]          Specify the environment lighting method (0 = filtered importance sampling, 1 = prefiltered environment maps, defaults to 0)\n"
+"    --envSampleCount [INTEGER]     Specify the environment sample count (defaults to 16)\n"
+"    --lightRotation [FLOAT]        Specify the rotation in degrees of the lighting environment about the Y axis (defaults to 0)\n"
+"    --path [FILEPATH]              Specify an additional absolute search path location (e.g. '/projects/MaterialX').  This path will be queried when locating standard data libraries, XInclude references, and referenced images.\n"
+"    --library [FILEPATH]           Specify an additional relative path to a custom data library folder (e.g. 'libraries/custom').  MaterialX files at the root of this folder will be included in all content documents.\n"
+"    --screenWidth [INTEGER]        Specify the width of the screen image in pixels (defaults to 1280)\n"
+"    --screenHeight [INTEGER]       Specify the height of the screen image in pixels (defaults to 960)\n"
+"    --screenColor [VECTOR3]        Specify the background color of the viewer as three comma-separated floats (defaults to 0.3,0.3,0.32)\n"
+"    --captureFilename [FILENAME]   Specify the filename to which the first rendered frame should be written\n"
+"    --msaa [INTEGER]               Specify the multisampling count for screen anti-aliasing (defaults to 0)\n"
+"    --refresh [INTEGER]            Specify the refresh period for the viewer in milliseconds (defaults to 50, set to -1 to disable)\n"
+"    --remap [TOKEN1:TOKEN2]        Specify the remapping from one token to another when MaterialX document is loaded\n"
+"    --skip [NAME]                  Specify to skip elements matching the given name attribute\n"
+"    --terminator [STRING]          Specify to enforce the given terminator string for file prefixes\n"
+"    --help                         Display the complete list of command-line options\n";
+
+template<class T> void parseToken(std::string token, std::string type, T& res)
+{
+    if (token.empty())
+    {
+        return;
+    }
+
+    mx::ValuePtr value = mx::Value::createValueFromStrings(token, type);
+    if (!value)
+    {
+        std::cout << "Unable to parse token " << token << " as type " << type << std::endl;
+        return;
+    }
+
+    res = value->asA<T>();
+}
+
+mx::FileSearchPath getDefaultSearchPath()
+{
+    mx::FilePath modulePath = mx::FilePath::getModulePath();
+    mx::FilePath installRootPath = modulePath.getParentPath();
+    mx::FilePath devRootPath = installRootPath.getParentPath().getParentPath().getParentPath();
+
+    mx::FileSearchPath searchPath;
+    searchPath.append(installRootPath);
+    searchPath.append(devRootPath);
+
+    return searchPath;
+}
 
 int main(int argc, char* const argv[])
 {  
     std::vector<std::string> tokens;
     for (int i = 1; i < argc; i++)
     {
-        tokens.push_back(std::string(argv[i]));
+        tokens.emplace_back(argv[i]);
     }
 
-    mx::StringVec libraryFolders = { "libraries/stdlib", "libraries/pbrlib", "libraries/stdlib/genglsl", "libraries/pbrlib/genglsl", "libraries/bxdf" };
-    mx::FileSearchPath searchPath;
-    std::string meshFilename = "resources/Geometry/shaderball.obj";
     std::string materialFilename = "resources/Materials/Examples/StandardSurface/standard_surface_default.mtlx";
-    std::string envRadiancePath = "resources/Images/san_giuseppe_bridge.hdr";
-    std::string envIrradiancePath = "resources/Images/san_giuseppe_bridge_diffuse.hdr";
-    DocumentModifiers modifiers;
-    int multiSampleCount = 0;
+    std::string meshFilename = "resources/Geometry/shaderball.obj";
+    std::string envRadianceFilename = "resources/Lights/san_giuseppe_bridge_split.hdr";
+    mx::FileSearchPath searchPath = getDefaultSearchPath();
+    mx::FilePathVec libraryFolders = { "libraries" };
+
+    mx::Vector3 meshRotation;
+    float meshScale = 1.0f;
+    mx::Vector3 cameraPosition(DEFAULT_CAMERA_POSITION);
+    mx::Vector3 cameraTarget;
+    float cameraViewAngle(DEFAULT_CAMERA_VIEW_ANGLE);
+    float cameraZoom(DEFAULT_CAMERA_ZOOM);
     mx::HwSpecularEnvironmentMethod specularEnvironmentMethod = mx::SPECULAR_ENVIRONMENT_FIS;
+    int envSampleCount = DEFAULT_ENV_SAMPLE_COUNT;
+    float lightRotation = 0.0f;
+    DocumentModifiers modifiers;
+    int screenWidth = 1280;
+    int screenHeight = 960;
+    mx::Color3 screenColor(0.3f, 0.3f, 0.32f);
+    std::string captureFilename;
+    int multiSampleCount = 0;
+    int refresh = 50;
 
     for (size_t i = 0; i < tokens.size(); i++)
     {
         const std::string& token = tokens[i];
         const std::string& nextToken = i + 1 < tokens.size() ? tokens[i + 1] : mx::EMPTY_STRING;
-        if (token == "--library" && !nextToken.empty())
-        {
-            libraryFolders.push_back(nextToken);
-        }
-        if (token == "--path" && !nextToken.empty())
-        {
-            searchPath = mx::FileSearchPath(nextToken);
-        }
-        if (token == "--mesh" && !nextToken.empty())
-        {
-            meshFilename = nextToken;
-        }
-        if (token == "--material" && !nextToken.empty())
+        if (token == "--material")
         {
             materialFilename = nextToken;
         }
-        if (token == "--remap" && !nextToken.empty())
+        else if (token == "--mesh")
         {
-            mx::StringVec vec = mx::splitString(nextToken, ":");
-            if (vec.size() == 2)
-            {
-                modifiers.remapElements[vec[0]] = vec[1];
-            }
+            meshFilename = nextToken;
         }
-        if (token == "--skip" && !nextToken.empty())
+        else if (token == "--envRad")
         {
-            modifiers.skipElements.insert(nextToken);
+            envRadianceFilename = nextToken;
         }
-        if (token == "--terminator" && !nextToken.empty())
+        else if (token == "--meshRotation")
         {
-            modifiers.filePrefixTerminator = nextToken;
+            parseToken(nextToken, "vector3", meshRotation);
         }
-        if (token == "--envMethod" && !nextToken.empty())
+        else if (token == "--meshScale")
+        {
+            parseToken(nextToken, "float", meshScale);
+        }
+        else if (token == "--cameraPosition")
+        {
+            parseToken(nextToken, "vector3", cameraPosition);
+        }
+        else if (token == "--cameraTarget")
+        {
+            parseToken(nextToken, "vector3", cameraTarget);
+        }
+        else if (token == "--cameraViewAngle")
+        {
+            parseToken(nextToken, "float", cameraViewAngle);
+        }
+        else if (token == "--cameraZoom")
+        {
+            parseToken(nextToken, "float", cameraZoom);
+        }
+        else if (token == "--envMethod")
         {
             if (std::stoi(nextToken) == 1)
             {
                 specularEnvironmentMethod = mx::SPECULAR_ENVIRONMENT_PREFILTER;
             }
         }
-        if (token == "--envRad" && !nextToken.empty())
+        else if (token == "--envSampleCount")
         {
-            envRadiancePath = nextToken;
+            parseToken(nextToken, "integer", envSampleCount);
+        }       
+        else if (token == "--lightRotation")
+        {
+            parseToken(nextToken, "float", lightRotation);
         }
-        if (token == "--envIrrad" && !nextToken.empty())
+        else if (token == "--path")
         {
-            envIrradiancePath = nextToken;
+            searchPath.append(mx::FileSearchPath(nextToken));
         }
-        if (token == "--msaa" && !nextToken.empty())
+        else if (token == "--library")
         {
-            multiSampleCount = std::stoi(nextToken);
+            libraryFolders.push_back(nextToken);
         }
-        if (token == "--help" || token == "-h")
+        else if (token == "--screenWidth")
         {
-            std::cout << docstring << std::endl;
-            return 0;
+            parseToken(nextToken, "integer", screenWidth);
         }
-    }
-
-    // Search current directory and parent directory if not found.
-    mx::FilePath currentPath(mx::FilePath::getCurrentPath());
-    mx::FilePath parentCurrentPath(currentPath);
-    parentCurrentPath.pop();
-    std::vector<mx::FilePath> libraryPaths =
-    { 
-        mx::FilePath("libraries")
-    };
-    for (auto libraryPath : libraryPaths)
-    {
-        mx::FilePath fullPath(currentPath / libraryPath);
-        if (!fullPath.exists())
+        else if (token == "--screenHeight")
         {
-            fullPath = parentCurrentPath / libraryPath;
-            if (fullPath.exists())
+            parseToken(nextToken, "integer", screenHeight);
+        }
+        else if (token == "--screenColor")
+        {
+            parseToken(nextToken, "color3", screenColor);
+        }
+        else if (token == "--captureFilename")
+        {
+            parseToken(nextToken, "string", captureFilename);
+        }
+        else if (token == "--msaa")
+        {
+            parseToken(nextToken, "integer", multiSampleCount);
+        }
+        else if (token == "--refresh")
+        {
+            parseToken(nextToken, "integer", refresh);
+        }
+        else if (token == "--remap")
+        {
+            mx::StringVec vec = mx::splitString(nextToken, ":");
+            if (vec.size() == 2)
             {
-                searchPath.append(fullPath);
+                modifiers.remapElements[vec[0]] = vec[1];
             }
+            else if (!nextToken.empty())
+            {
+                std::cout << "Unable to parse token following command-line option: " << token << std::endl;
+            }
+        }
+        else if (token == "--skip")
+        {
+            modifiers.skipElements.insert(nextToken);
+        }
+        else if (token == "--terminator")
+        {
+            modifiers.filePrefixTerminator = nextToken;
+        }
+        else if (token == "--help")
+        {
+            std::cout << " MaterialXView version " << mx::getVersionString() << std::endl;
+            std::cout << options << std::endl;
+            return 0;
         }
         else
         {
-            searchPath.append(fullPath);
+            std::cout << "Unrecognized command-line option: " << token << std::endl;
+            std::cout << "Launch the viewer with '--help' for a complete list of supported options." << std::endl;
+            continue;
         }
-    }
-    searchPath.append(parentCurrentPath);
 
-    try
-    {
-        ng::init();
+        if (nextToken.empty())
         {
-            ng::ref<Viewer> viewer = new Viewer(libraryFolders,
-                                                searchPath,
-                                                meshFilename,
-                                                materialFilename,
-                                                modifiers,
-                                                specularEnvironmentMethod,
-                                                envRadiancePath,
-                                                envIrradiancePath,
-                                                multiSampleCount);
-            viewer->setVisible(true);
-            ng::mainloop();
+            std::cout << "Expected another token following command-line option: " << token << std::endl;
         }
-    
-        ng::shutdown();
+        else
+        {
+            i++;
+        }
     }
-    catch (const std::runtime_error& e)
+
+    ng::init();
     {
-        std::string error_msg = std::string("Fatal error: ") + std::string(e.what());
-        std::cerr << error_msg << std::endl;
-        return -1;
+        ng::ref<Viewer> viewer = new Viewer(materialFilename,
+                                            meshFilename,
+                                            envRadianceFilename,
+                                            searchPath,
+                                            libraryFolders,
+                                            screenWidth,
+                                            screenHeight,
+                                            screenColor,
+                                            multiSampleCount);
+        viewer->setMeshRotation(meshRotation);
+        viewer->setMeshScale(meshScale);
+        viewer->setCameraPosition(cameraPosition);
+        viewer->setCameraTarget(cameraTarget);
+        viewer->setCameraViewAngle(cameraViewAngle);
+        viewer->setCameraZoom(cameraZoom);
+        viewer->setSpecularEnvironmentMethod(specularEnvironmentMethod);
+        viewer->setEnvSampleCount(envSampleCount);
+        viewer->setLightRotation(lightRotation);
+        viewer->setDocumentModifiers(modifiers);
+        if (!captureFilename.empty())
+        {
+            viewer->requestFrameCapture(captureFilename);
+            viewer->requestExit();
+        }
+        viewer->initialize();
+        ng::mainloop(refresh);
     }
+    ng::shutdown();
 
     return 0;
 }

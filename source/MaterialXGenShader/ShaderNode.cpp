@@ -14,6 +14,8 @@
 namespace MaterialX
 {
 
+const string ShaderMetadataRegistry::USER_DATA_NAME = "ShaderMetadataRegistry";
+
 //
 // ShaderPort methods
 //
@@ -26,6 +28,11 @@ ShaderPort::ShaderPort(ShaderNode* node, const TypeDesc* type, const string& nam
     _value(value),
     _flags(0)
 {
+}
+
+string ShaderPort::getFullName() const 
+{ 
+    return (_node->getName() + "_" + _name); 
 }
 
 //
@@ -73,8 +80,8 @@ void ShaderOutput::breakConnection(ShaderInput* dst)
     if (!_connections.count(dst))
     {
         throw ExceptionShaderGenError(
-            "Cannot break non-existent connection from output: " + getNode()->getName() + "." + getName()
-            + " to input: " + dst->getNode()->getName() + "." + dst->getName());
+            "Cannot break non-existent connection from output: " + getFullName()
+            + " to input: " + dst->getFullName());
     }
     dst->breakConnection(); 
 }
@@ -90,7 +97,7 @@ void ShaderOutput::breakConnections()
     if (!_connections.empty())
     {
         throw ExceptionShaderGenError("Number of output connections not broken properly'" + std::to_string(_connections.size()) +
-            " for output: " + getNode()->getName() + "." + getName());
+            " for output: " + getFullName());
     }
 }
 
@@ -108,16 +115,13 @@ const string ShaderNode::CONSTANT = "constant";
 const string ShaderNode::IMAGE = "image";
 const string ShaderNode::COMPARE = "compare";
 const string ShaderNode::SWITCH = "switch";
+const string ShaderNode::SCATTER_MODE = "scatter_mode";
 const string ShaderNode::BSDF_R = "R";
 const string ShaderNode::BSDF_T = "T";
-const string ShaderNode::TRANSFORM_POINT = "transformpoint";
-const string ShaderNode::TRANSFORM_VECTOR = "transformvector";
-const string ShaderNode::TRANSFORM_NORMAL = "transformnormal";
 const string ShaderNode::TEXTURE2D_GROUPNAME = "texture2d";
 const string ShaderNode::TEXTURE3D_GROUPNAME = "texture3d";
 const string ShaderNode::PROCEDURAL2D_GROUPNAME = "procedural2d";
 const string ShaderNode::PROCEDURAL3D_GROUPNAME = "procedural3d";
-const string ShaderNode::CONVOLUTION2D_GROUPNAME = "convolution2d";
 
 //
 // ShaderNode methods
@@ -127,6 +131,7 @@ ShaderNode::ShaderNode(const ShaderGraph* parent, const string& name) :
     _parent(parent),
     _name(name),
     _classification(0),
+    _flags(0),
     _impl(nullptr)
 {
 }
@@ -149,7 +154,7 @@ bool ShaderNode::referencedConditionally() const
     return false;
 }
 
-void ShaderNode::ScopeInfo::adjustAtConditionalInput(ShaderNode* condNode, int branch, const uint32_t fullMask)
+void ShaderNode::ScopeInfo::adjustAtConditionalInput(ShaderNode* condNode, int branch, uint32_t fullMask)
 {
     if (type == ScopeInfo::GLOBAL || (type == ScopeInfo::SINGLE && conditionBitmask == fullConditionMask))
     {
@@ -201,7 +206,7 @@ ShaderNodePtr ShaderNode::create(const ShaderGraph* parent, const string& name, 
     const ShaderGenerator& shadergen = context.getShaderGenerator();
 
     // Find the implementation for this nodedef
-    InterfaceElementPtr impl = nodeDef.getImplementation(shadergen.getTarget(), shadergen.getLanguage());
+    InterfaceElementPtr impl = nodeDef.getImplementation(shadergen.getTarget());
     if (impl)
     {
         newNode->_impl = shadergen.getImplementation(*impl, context);
@@ -209,7 +214,7 @@ ShaderNodePtr ShaderNode::create(const ShaderGraph* parent, const string& name, 
     if (!newNode->_impl)
     {
         throw ExceptionShaderGenError("Could not find a matching implementation for node '" + nodeDef.getNodeString() +
-            "' matching language '" + shadergen.getLanguage() + "' and target '" + shadergen.getTarget() + "'");
+            "' matching target '" + shadergen.getTarget() + "'");
     }
 
     // Check for classification based on group name
@@ -225,10 +230,6 @@ ShaderNodePtr ShaderNode::create(const ShaderGraph* parent, const string& name, 
         {
             groupClassification = Classification::SAMPLE3D;
         }
-        else if (groupName == CONVOLUTION2D_GROUPNAME)
-        {
-            groupClassification = Classification::CONVOLUTION2D;
-        }
     }
 
     // Create interface from nodedef
@@ -241,23 +242,32 @@ ShaderNodePtr ShaderNode::create(const ShaderGraph* parent, const string& name, 
         }
         else
         {
+            ShaderInput* input;
             const string& portValue = port->getResolvedValueString();
             std::pair<const TypeDesc*, ValuePtr> enumResult;
-            if (context.getShaderGenerator().remapEnumeration(*port, portValue, enumResult))
+            const string& enumNames = port->getAttribute(ValueElement::ENUM_ATTRIBUTE);
+            if (context.getShaderGenerator().getSyntax().remapEnumeration(portValue, portType, enumNames, enumResult))
             {
-                ShaderInput* input = newNode->addInput(port->getName(), enumResult.first);
+                input = newNode->addInput(port->getName(), enumResult.first);
                 input->setValue(enumResult.second);
             }
             else
             {
-                ShaderInput* input = newNode->addInput(port->getName(), portType);
+                input = newNode->addInput(port->getName(), portType);
                 if (!portValue.empty())
                 {
                     input->setValue(port->getResolvedValue());
                 }
             }
+            if (port->getIsUniform())
+            {
+                input->setUniform();
+            }
         }
     }
+
+    // Add any additional inputs required by the implementation
+    newNode->getImplementation().addInputs(*newNode, context);
 
     // Add a default output if needed
     if (newNode->numOutputs() == 0)
@@ -295,6 +305,17 @@ ShaderNodePtr ShaderNode::create(const ShaderGraph* parent, const string& name, 
         {
             newNode->_classification |= Classification::BSDF_T;
         }
+
+        // Check specifically for the vertical layering node
+        if (nodeDef.getName() == "ND_layer_bsdf")
+        {
+            newNode->_classification |= Classification::LAYER;
+        }
+        // Check specifically for the thin-film node
+        else if (nodeDef.getName() == "ND_thin_film_bsdf")
+        {
+            newNode->_classification |= Classification::THINFILM;
+        }
     }
     else if (primaryOutput->getType() == Type::EDF)
     {
@@ -323,21 +344,11 @@ ShaderNodePtr ShaderNode::create(const ShaderGraph* parent, const string& name, 
         newNode->_classification = Classification::TEXTURE | Classification::FILETEXTURE;
     }
 
-    if(nodeDef.getNodeString() == TRANSFORM_POINT)
-    {
-        newNode->_classification |= Classification::TRANSFORM_POINT;
-    }
-    else if(nodeDef.getNodeString() == TRANSFORM_VECTOR)
-    {
-        newNode->_classification |= Classification::TRANSFORM_VECTOR;
-    }
-    else if(nodeDef.getNodeString() == TRANSFORM_NORMAL)
-    {
-        newNode->_classification |= Classification::TRANSFORM_NORMAL;
-    }
-
     // Add in group classification
     newNode->_classification |= groupClassification;
+
+    // Create any metadata.
+    newNode->createMetadata(nodeDef, context);
 
     return newNode;
 }
@@ -350,48 +361,7 @@ ShaderNodePtr ShaderNode::create(const ShaderGraph* parent, const string& name, 
     return newNode;
 }
 
-void ShaderNode::setPaths(const Node& node, const NodeDef& nodeDef, bool includeNodeDefInputs)
-{
-    // Set element paths for children on the node
-    for (const ValueElementPtr& nodeValue : node.getActiveValueElements())
-    {
-        ShaderInput* input = getInput(nodeValue->getName());
-        if (input)
-        {
-            input->setPath(nodeValue->getNamePath());
-        }
-    }
-
-    if (!includeNodeDefInputs)
-    {
-        return;
-    }
-
-    // Set element paths based on the node definition. Note that these
-    // paths don't actually exist at time of shader generation since there
-    // are no inputs/parameters specified on the node itself
-    //
-    const string& nodePath = node.getNamePath();
-    for (const ValueElementPtr& nodeInput : nodeDef.getActiveInputs())
-    {
-        ShaderInput* input = getInput(nodeInput->getName());
-        if (input && input->getPath().empty())
-        {
-            input->setPath(nodePath + NAME_PATH_SEPARATOR + nodeInput->getName());
-        }
-    }
-
-    for (const ParameterPtr& nodeParameter : nodeDef.getActiveParameters())
-    {
-        ShaderInput* input = getInput(nodeParameter->getName());
-        if (input && input->getPath().empty())
-        {
-            input->setPath(nodePath + NAME_PATH_SEPARATOR + nodeParameter->getName());
-        }
-    }
-}
-
-void ShaderNode::setValues(const Node& node, const NodeDef& nodeDef, GenContext& context)
+void ShaderNode::initialize(const Node& node, const NodeDef& nodeDef, GenContext& context)
 {
     // Copy input values from the given node
     for (const ValueElementPtr& nodeValue : node.getActiveValueElements())
@@ -402,7 +372,9 @@ void ShaderNode::setValues(const Node& node, const NodeDef& nodeDef, GenContext&
         {
             const string& valueString = nodeValue->getResolvedValueString();
             std::pair<const TypeDesc*, ValuePtr> enumResult;
-            if (context.getShaderGenerator().remapEnumeration(*nodeDefInput, valueString, enumResult))
+            const string& enumNames = nodeDefInput->getAttribute(ValueElement::ENUM_ATTRIBUTE);
+            const TypeDesc* type = TypeDesc::get(nodeDefInput->getType());
+            if (context.getShaderGenerator().getSyntax().remapEnumeration(valueString, type, enumNames, enumResult))
             {
                 input->setValue(enumResult.second);
             }
@@ -415,6 +387,127 @@ void ShaderNode::setValues(const Node& node, const NodeDef& nodeDef, GenContext&
             if (inputElem)
             {
                 input->setChannels(inputElem->getChannels());
+            }
+        }
+    }
+
+    // Set implementation specific values.
+    if (_impl)
+    {
+        _impl->setValues(node, *this, context);
+    }
+
+    // Set element paths for children on the node
+    for (const ValueElementPtr& nodeValue : node.getActiveValueElements())
+    {
+        ShaderInput* input = getInput(nodeValue->getName());
+        if (input)
+        {
+            input->setPath(nodeValue->getNamePath());
+        }
+    }
+
+    // Set element paths based on the node definition. Note that these
+    // paths don't actually exist at time of shader generation since there
+    // are no inputs specified on the node itself
+    //
+    const string& nodePath = node.getNamePath();
+    for (auto nodeInput : nodeDef.getActiveInputs())
+    {
+        ShaderInput* input = getInput(nodeInput->getName());
+        if (input && input->getPath().empty())
+        {
+            input->setPath(nodePath + NAME_PATH_SEPARATOR + nodeInput->getName());
+        }
+    }
+
+    // For BSDF nodes see if there is a scatter_mode input,
+    // and update the classification accordingly.
+    if (hasClassification(Classification::BSDF))
+    {
+        const InputPtr scatterModeInput = node.getInput(SCATTER_MODE);
+        const string& scatterMode = scatterModeInput ? scatterModeInput->getValueString() : EMPTY_STRING;
+        // If scatter mode is only T, set classification to only transmission.
+        // Note: For only R we must still keep classification at default value (both reflection/transmission)
+        // since reflection needs to attenuate the transmission amount in HW shaders when layering is used.
+        if (scatterMode == BSDF_T)
+        {
+            _classification |= Classification::BSDF_T;
+            _classification &= ~Classification::BSDF_R;
+        }
+    }
+}
+
+void ShaderNode::createMetadata(const NodeDef& nodeDef, GenContext& context)
+{
+    ShaderMetadataRegistryPtr registry = context.getUserData<ShaderMetadataRegistry>(ShaderMetadataRegistry::USER_DATA_NAME);
+    if (!(registry && registry->getAllMetadata().size()))
+    {
+        // Early out if no metadata is registered.
+        return;
+    }
+
+    // Set metadata on the node according to the nodedef attributes.
+    ShaderMetadataVecPtr nodeMetadataStorage = getMetadata();
+    for (const string& nodedefAttr : nodeDef.getAttributeNames())
+    {
+        const ShaderMetadata* metadataEntry = registry->findMetadata(nodedefAttr);
+        if (metadataEntry)
+        {
+            const string& attrValue = nodeDef.getAttribute(nodedefAttr);
+            if (!attrValue.empty())
+            {
+                ValuePtr value = Value::createValueFromStrings(attrValue, metadataEntry->type->getName());
+                if (!value)
+                {
+                    value = metadataEntry->value;
+                }
+                if (value)
+                {
+                    if (!nodeMetadataStorage)
+                    {
+                        nodeMetadataStorage = std::make_shared<ShaderMetadataVec>();
+                        setMetadata(nodeMetadataStorage);
+                    }
+                    nodeMetadataStorage->push_back(ShaderMetadata(metadataEntry->name, metadataEntry->type, value));
+                }
+            }
+        }
+    }
+
+    // Set metadata on inputs according to attributes on the nodedef's inputs
+    for (const ValueElementPtr& nodedefPort : nodeDef.getActiveValueElements())
+    {
+        ShaderInput* input = getInput(nodedefPort->getName());
+        if (input)
+        {
+            ShaderMetadataVecPtr inputMetadataStorage = input->getMetadata();
+
+            for (const string& nodedefPortAttr : nodedefPort->getAttributeNames())
+            {
+                const ShaderMetadata* metadataEntry = registry->findMetadata(nodedefPortAttr);
+                if (metadataEntry)
+                {
+                    const string& attrValue = nodedefPort->getAttribute(nodedefPortAttr);
+                    if (!attrValue.empty())
+                    {
+                        const TypeDesc* type = metadataEntry->type ? metadataEntry->type : input->getType();
+                        ValuePtr value = Value::createValueFromStrings(attrValue, type->getName());
+                        if (!value)
+                        {
+                            value = metadataEntry->value;
+                        }
+                        if (value)
+                        {
+                            if (!inputMetadataStorage)
+                            {
+                                inputMetadataStorage = std::make_shared<ShaderMetadataVec>();
+                                input->setMetadata(inputMetadataStorage);
+                            }
+                            inputMetadataStorage->push_back(ShaderMetadata(metadataEntry->name, type, value));
+                        }
+                    }
+                }
             }
         }
     }

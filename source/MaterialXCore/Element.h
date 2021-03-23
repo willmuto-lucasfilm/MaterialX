@@ -22,10 +22,10 @@ class Element;
 class TypedElement;
 class ValueElement;
 class Token;
+class CommentElement;
+class GenericElement;
 class StringResolver;
 class Document;
-class Material;
-class CopyOptions;
 
 /// A shared pointer to an Element
 using ElementPtr = shared_ptr<Element>;
@@ -47,6 +47,16 @@ using TokenPtr = shared_ptr<Token>;
 /// A shared pointer to a const Token
 using ConstTokenPtr = shared_ptr<const Token>;
 
+/// A shared pointer to a CommentElement
+using CommentElementPtr = shared_ptr<CommentElement>;
+/// A shared pointer to a const CommentElement
+using ConstCommentElementPtr = shared_ptr<const CommentElement>;
+
+/// A shared pointer to a GenericElement
+using GenericElementPtr = shared_ptr<GenericElement>;
+/// A shared pointer to a const GenericElement
+using ConstGenericElementPtr = shared_ptr<const GenericElement>;
+
 /// A shared pointer to a StringResolver
 using StringResolverPtr = shared_ptr<StringResolver>;
 
@@ -54,7 +64,7 @@ using StringResolverPtr = shared_ptr<StringResolver>;
 using ElementMap = std::unordered_map<string, ElementPtr>;
 
 /// A standard function taking an ElementPtr and returning a boolean.
-using ElementPredicate = std::function<bool(ElementPtr)>;
+using ElementPredicate = std::function<bool(ConstElementPtr)>;
 
 /// @class Element
 /// The base class for MaterialX elements.
@@ -73,11 +83,12 @@ class Element : public std::enable_shared_from_this<Element>
     }
   public:
     virtual ~Element() { }
+    Element(const Element&) = delete;
+    Element& operator=(const Element&) = delete;
 
   protected:
     using DocumentPtr = shared_ptr<Document>;
     using ConstDocumentPtr = shared_ptr<const Document>;
-    using ConstMaterialPtr = shared_ptr<const Material>;
 
     template <class T> friend class ElementRegistry;
 
@@ -135,7 +146,7 @@ class Element : public std::enable_shared_from_this<Element>
     /// current element is returned.  If no element is found at the given path,
     /// then an empty shared pointer is returned.
     /// @param namePath The relative name path of the specified element.
-    ElementPtr getDescendant(const string& namePath);
+    ElementPtr getDescendant(const string& namePath) const;
 
     /// @}
     /// @name File Prefix
@@ -246,28 +257,6 @@ class Element : public std::enable_shared_from_this<Element>
     }
 
     /// @}
-    /// @name Target
-    /// @{
-
-    /// Set the element's target string.
-    void setTarget(const string& target)
-    {
-        setAttribute(TARGET_ATTRIBUTE, target);
-    }
-
-    /// Return true if the given element has a target string.
-    bool hasTarget() const
-    {
-        return hasAttribute(TARGET_ATTRIBUTE);
-    }
-
-    /// Return the element's target string.
-    const string& getTarget() const
-    {
-        return getAttribute(TARGET_ATTRIBUTE);
-    }
-
-    /// @}
     /// @name Inheritance
     /// @{
 
@@ -343,53 +332,37 @@ class Element : public std::enable_shared_from_this<Element>
     {
         for (ConstElementPtr elem = getSelf(); elem; elem = elem->getParent())
         {
-            if (elem->hasNamespace())
+            const string& namespaceStr = elem->getNamespace();
+            if (!namespaceStr.empty())
             {
-                return elem->getNamespace() + NAME_PREFIX_SEPARATOR + name;
+                // Check if the name is qualified already.
+                const size_t i = name.find_first_of(NAME_PREFIX_SEPARATOR);
+                if (i != string::npos && name.substr(0, i) == namespaceStr)
+                {
+                    // The name is already qualified with this namespace,
+                    // so just return it as is.
+                    return name;
+                }
+                return namespaceStr + NAME_PREFIX_SEPARATOR + name;
             }
         }
         return name;
     }
 
     /// @}
-    /// @name Version
+    /// @name Documentation String
     /// @{
 
-    /// Set the version string of this element.
-    void setVersionString(const string& version)
+    /// Set the documentation string of this element.
+    void setDocString(const string& doc)
     {
-        setAttribute(VERSION_ATTRIBUTE, version);
+        setAttribute(DOC_ATTRIBUTE, doc);
     }
 
-    /// Return true if this element has a version string.
-    bool hasVersionString() const
+    /// Return the documentation string of this element
+    string getDocString() const
     {
-        return hasAttribute(VERSION_ATTRIBUTE);
-    }
-
-    /// Return the version string of this element.
-    const string& getVersionString() const
-    {
-        return getAttribute(VERSION_ATTRIBUTE);
-    }
-
-    /// Return the major and minor versions as an integer pair.
-    virtual std::pair<int, int> getVersionIntegers() const;
-
-    /// @}
-    /// @name Default Version
-    /// @{
-
-    /// Set the default version flag of this element.
-    void setDefaultVersion(bool defaultVersion)
-    {
-        setTypedAttribute<bool>(DEFAULT_VERSION_ATTRIBUTE, defaultVersion);
-    }
-
-    /// Return the default version flag of this element.
-    bool getDefaultVersion() const
-    {
-        return getTypedAttribute<bool>(DEFAULT_VERSION_ATTRIBUTE);
+        return getAttribute(DOC_ATTRIBUTE);
     }
 
     /// @}
@@ -423,7 +396,7 @@ class Element : public std::enable_shared_from_this<Element>
     ///     If no name is specified, then a unique name will automatically be
     ///     generated.
     /// @throws Exception if a child of this element already possesses the
-    ///    given name.
+    ///     given name.
     /// @return A shared pointer to the new child element.
     template<class T> shared_ptr<T> addChild(const string& name = EMPTY_STRING);
 
@@ -435,19 +408,22 @@ class Element : public std::enable_shared_from_this<Element>
     ///     If no name is specified, then a unique name will automatically be
     ///     generated.
     /// @throws Exception if a child of this element already possesses the
-    ///    given name.
+    ///     given name.
     /// @return A shared pointer to the new child element.
-    ElementPtr addChildOfCategory(const string& category,
-                                  const string& name = EMPTY_STRING);
+    ElementPtr addChildOfCategory(const string& category, string name = EMPTY_STRING);
+
+    /// Change the category of the given child element.
+    /// @param child The child element that will be modified.
+    /// @param category The new category string for the child element.
+    /// @return A shared pointer to a new child element, containing the contents
+    ///     of the original child but with a new category and subclass.
+    ElementPtr changeChildCategory(ElementPtr child, const string& category);
 
     /// Return the child element, if any, with the given name.
     ElementPtr getChild(const string& name) const
     {
         ElementMap::const_iterator it = _childMap.find(name);
-        if (it == _childMap.end())
-            return ElementPtr();
-        else
-            return it->second;
+        return (it != _childMap.end()) ? it->second : ElementPtr();
     }
 
     /// Return the child element, if any, with the given name and subclass.
@@ -522,10 +498,7 @@ class Element : public std::enable_shared_from_this<Element>
     const string& getAttribute(const string& attrib) const
     {
         StringMap::const_iterator it = _attributeMap.find(attrib);
-        if (it == _attributeMap.end())
-            return EMPTY_STRING;
-        else
-            return it->second;
+        return (it != _attributeMap.end()) ? it->second : EMPTY_STRING;
     }
 
     /// Return a vector of stored attribute names, in the order they were set.
@@ -542,17 +515,20 @@ class Element : public std::enable_shared_from_this<Element>
         setAttribute(attrib, toValueString(data));
     }
 
-    /// Return the the value of an implicitly typed attribute.  If the given
+    /// Return the value of an implicitly typed attribute. If the given
     /// attribute is not present, or cannot be converted to the given data
     /// type, then the zero value for the data type is returned.
-    template<class T> const T getTypedAttribute(const string& attrib) const
+    template<class T> T getTypedAttribute(const string& attrib) const
     {
-        try
+        if (hasAttribute(attrib))
         {
-            return fromValueString<T>(getAttribute(attrib));
-        }
-        catch (ExceptionTypeError&)
-        {
+            try
+            {
+                return fromValueString<T>(getAttribute(attrib));
+            }
+            catch (ExceptionTypeError&)
+            {
+            }
         }
         return {};
     }
@@ -647,8 +623,6 @@ class Element : public std::enable_shared_from_this<Element>
 
     /// Traverse the dataflow graph from the given element to each of its
     /// upstream sources in depth-first order, using pre-order visitation.
-    /// @param material An optional material element, whose data bindings will
-    ///    be applied to the traversal.
     /// @throws ExceptionFoundCycle if a cycle is encountered.
     /// @return A GraphIterator object.
     /// @details Example usage with an implicit iterator:
@@ -670,17 +644,14 @@ class Element : public std::enable_shared_from_this<Element>
     /// @endcode
     /// @sa getUpstreamEdge
     /// @sa getUpstreamElement
-    GraphIterator traverseGraph(ConstMaterialPtr material = nullptr) const;
+    GraphIterator traverseGraph() const;
 
     /// Return the Edge with the given index that lies directly upstream from
     /// this element in the dataflow graph.
-    /// @param material An optional material element, whose data bindings will
-    ///    be applied to the query.
     /// @param index An optional index of the edge to be returned, where the
     ///    valid index range may be determined with getUpstreamEdgeCount.
     /// @return The upstream Edge, if valid, or an empty Edge object.
-    virtual Edge getUpstreamEdge(ConstMaterialPtr material = nullptr,
-                                 size_t index = 0) const;
+    virtual Edge getUpstreamEdge(size_t index = 0) const;
 
     /// Return the number of queriable upstream edges for this element.
     virtual size_t getUpstreamEdgeCount() const
@@ -690,13 +661,10 @@ class Element : public std::enable_shared_from_this<Element>
 
     /// Return the Element with the given index that lies directly upstream
     /// from this one in the dataflow graph.
-    /// @param material An optional material element, whose data bindings will
-    ///    be applied to the query.
     /// @param index An optional index of the element to be returned, where the
     ///    valid index range may be determined with getUpstreamEdgeCount.
     /// @return The upstream Element, if valid, or an empty ElementPtr.
-    ElementPtr getUpstreamElement(ConstMaterialPtr material = nullptr,
-                                  size_t index = 0) const;
+    ElementPtr getUpstreamElement(size_t index = 0) const;
 
     /// Traverse the inheritance chain from the given element to each element
     /// from which it inherits.
@@ -768,10 +736,7 @@ class Element : public std::enable_shared_from_this<Element>
 
     /// Copy all attributes and descendants from the given element to this one.
     /// @param source The element from which content is copied.
-    /// @param copyOptions An optional pointer to a CopyOptions object.
-    ///    If provided, then the given options will affect the behavior of the
-    ///    copy function.  Defaults to a null pointer.
-    void copyContentFrom(const ConstElementPtr& source, const CopyOptions* copyOptions = nullptr);
+    void copyContentFrom(const ConstElementPtr& source);
 
     /// Clear all attributes and descendants from this element.
     void clearContent();
@@ -795,30 +760,15 @@ class Element : public std::enable_shared_from_this<Element>
     ///    applicable set of geometry token substitutions.  By default, no
     ///    geometry token substitutions are applied.  If the universal geometry
     ///    name "/" is given, then all geometry token substitutions are applied,
-    /// @param material An optional material element, which will be used to
-    ///    select the applicable set of interface token substitutions.
-    /// @param target An optional target name, which will be used to filter
-    ///    the shader references within the material that are considered.
-    /// @param type An optional shader type (e.g. "surfaceshader"), which will
-    ///    be used to filter the shader references within the material that are
-    ///    considered.
     /// @return A shared pointer to a StringResolver.
-    /// @todo The StringResolver returned by this method doesn't yet take
-    ///    variant assignments into account.
-    StringResolverPtr createStringResolver(const string& geom = EMPTY_STRING,
-                                           ConstMaterialPtr material = nullptr,
-                                           const string& target = EMPTY_STRING,
-                                           const string& type = EMPTY_STRING) const;
+    StringResolverPtr createStringResolver(const string& geom = EMPTY_STRING) const;
 
     /// Return a single-line description of this element, including its category,
     /// name, and attributes.
     string asString() const;
 
-    /// @}
-
-  protected:
-    // Resolve a reference to a named element at the root scope of this document,
-    // taking the namespace at the scope of this element into account.
+    /// Resolve a reference to a named element at the root scope of this document,
+    /// taking the namespace at the scope of this element into account.
     template<class T> shared_ptr<T> resolveRootNameReference(const string& name) const
     {
         ConstElementPtr root = getRoot();
@@ -826,6 +776,9 @@ class Element : public std::enable_shared_from_this<Element>
         return child ? child : root->getChildOfType<T>(name);
     }
 
+    /// @}
+
+  protected:
     // Enforce a requirement within a validate method, updating the validation
     // state and optional output text if the requirement is not met.
     void validateRequire(bool expression, bool& res, string* message, string errorDesc) const;
@@ -835,11 +788,9 @@ class Element : public std::enable_shared_from_this<Element>
     static const string FILE_PREFIX_ATTRIBUTE;
     static const string GEOM_PREFIX_ATTRIBUTE;
     static const string COLOR_SPACE_ATTRIBUTE;
-    static const string TARGET_ATTRIBUTE;
-    static const string VERSION_ATTRIBUTE;
-    static const string DEFAULT_VERSION_ATTRIBUTE;
     static const string INHERIT_ATTRIBUTE;
     static const string NAMESPACE_ATTRIBUTE;
+    static const string DOC_ATTRIBUTE;
 
   protected:
     virtual void registerChildElement(ElementPtr child);
@@ -867,9 +818,6 @@ class Element : public std::enable_shared_from_this<Element>
     weak_ptr<Element> _root;
 
   private:
-    Element(const Element&) = delete;
-    Element& operator=(const Element&) = delete;
-
     template <class T> static ElementPtr createElement(ElementPtr parent, const string& name)
     {
         return std::make_shared<T>(parent, name);
@@ -898,8 +846,8 @@ class TypedElement : public Element
     using TypeDefPtr = shared_ptr<class TypeDef>;
 
   public:
-    /// @}
     /// @name Type String
+    /// @{
 
     /// Set the element's type string.
     void setType(const string& type)
@@ -914,7 +862,7 @@ class TypedElement : public Element
     }
 
     /// Return the element's type string.
-    const string& getType() const
+    virtual const string& getType() const
     {
         return getAttribute(TYPE_ATTRIBUTE);
     }
@@ -1034,6 +982,12 @@ class ValueElement : public TypedElement
         setValueString(toValueString(value));
     }
 
+    /// Set the typed value of an element from a C-style string.
+    void setValue(const char* value, const string& type = EMPTY_STRING)
+    {
+        setValue(value ? string(value) : EMPTY_STRING, type);
+    }
+
     /// Return true if the element possesses a typed value.
     bool hasValue() const
     {
@@ -1067,33 +1021,72 @@ class ValueElement : public TypedElement
         return Value::createValueFromStrings(getResolvedValueString(resolver), getType());
     }
 
-    /// @}
-    /// @name Bound Value
-    /// @{
-
-    /// Return the value that is bound to this element within the context of a
-    /// given material.  For example, a BindParam within the material will
-    /// affect the value of its correponding Parameter, and a BindInput will
-    /// affect the value of its corresponding Input.
-    ///
-    /// If this element is bound to an Output of a NodeGraph, rather than to a
-    /// uniform value, then an empty shared pointer is returned.
-    ///
-    /// If no data binding is applied by the material, then the default value for
-    /// this element is returned.
-    ///
-    /// @param material The material whose data bindings will be applied to
-    ///    the evaluation.
-    /// @return A shared pointer to a typed value, or an empty shared pointer if
-    ///    no bound or default value was found.
-    ValuePtr getBoundValue(ConstMaterialPtr material) const;
-
-    /// Return the default value for this element, which will be used as its bound
-    /// value when no external binding from a material is present.
+    /// Return the default value for this element as a generic value object, which
+    /// may be queried to access its data.
     ///
     /// @return A shared pointer to a typed value, or an empty shared pointer if
     ///    no default value was found.
     ValuePtr getDefaultValue() const;
+
+    /// @}
+    /// @name Units
+    /// @{
+
+    /// Set the unit string of an element.
+    void setUnit(const string& unit)
+    {
+        setAttribute(UNIT_ATTRIBUTE, unit);
+    }
+
+    /// Return true if the given element has a unit string.
+    bool hasUnit() const
+    {
+        return hasAttribute(UNIT_ATTRIBUTE);
+    }
+
+    /// Return the unit string of an element.
+    const string& getUnit() const
+    {
+        return getAttribute(UNIT_ATTRIBUTE);
+    }
+
+    /// Return the unit defined by the assocaited NodeDef if this element
+    /// is a child of a Node.
+    const string& getActiveUnit() const;
+
+    /// Set the unit type of an element.
+    void setUnitType(const string& unit)
+    {
+        setAttribute(UNITTYPE_ATTRIBUTE, unit);
+    }
+
+    /// Return true if the given element has a unit type.
+    bool hasUnitType() const
+    {
+        return hasAttribute(UNITTYPE_ATTRIBUTE);
+    }
+
+    /// Return the unit type of an element.
+    const string& getUnitType() const
+    {
+        return getAttribute(UNITTYPE_ATTRIBUTE);
+    }
+
+    /// @}
+    /// @name Uniform attribute
+    /// @{
+
+    /// Set the uniform attribute flag on this element.
+    void setIsUniform(bool value)
+    {
+        setTypedAttribute<bool>(UNIFORM_ATTRIBUTE, value);
+    }
+
+    /// The the uniform attribute flag for this element.
+    bool getIsUniform() const
+    {
+        return getTypedAttribute<bool>(UNIFORM_ATTRIBUTE);
+    }
 
     /// @}
     /// @name Validation
@@ -1107,7 +1100,6 @@ class ValueElement : public TypedElement
 
   public:
     static const string VALUE_ATTRIBUTE;
-    static const string PUBLIC_NAME_ATTRIBUTE;
     static const string INTERFACE_NAME_ATTRIBUTE;
     static const string IMPLEMENTATION_NAME_ATTRIBUTE;
     static const string IMPLEMENTATION_TYPE_ATTRIBUTE;
@@ -1117,6 +1109,13 @@ class ValueElement : public TypedElement
     static const string UI_FOLDER_ATTRIBUTE;
     static const string UI_MIN_ATTRIBUTE;
     static const string UI_MAX_ATTRIBUTE;
+    static const string UI_SOFT_MIN_ATTRIBUTE;
+    static const string UI_SOFT_MAX_ATTRIBUTE;
+    static const string UI_STEP_ATTRIBUTE;
+    static const string UI_ADVANCED_ATTRIBUTE;
+    static const string UNIT_ATTRIBUTE;
+    static const string UNITTYPE_ATTRIBUTE;
+    static const string UNIFORM_ATTRIBUTE;
 };
 
 /// @class Token
@@ -1133,21 +1132,26 @@ class Token : public ValueElement
     }
     virtual ~Token() { }
 
-    /// @name Traversal
-    /// @{
+  public:
+    static const string CATEGORY;
+};
 
-    /// Return the Edge with the given index that lies directly upstream from
-    /// this element in the dataflow graph.
-    Edge getUpstreamEdge(ConstMaterialPtr material = nullptr,
-                         size_t index = 0) const override;
-
-    /// Return the number of queriable upstream edges for this element.
-    size_t getUpstreamEdgeCount() const override
+/// @class CommentElement
+/// An element representing a block of descriptive text within a document, which will
+/// be stored a comment when the document is written out.
+///
+/// The comment text may be accessed with the methods Element::setDocString and
+/// Element::getDocString.
+/// 
+class CommentElement : public Element
+{
+  public:
+    CommentElement(ElementPtr parent, const string& name) :
+        Element(parent, CATEGORY, name)
     {
-        return 1;
     }
+    virtual ~CommentElement() { }
 
-    /// @}
   public:
     static const string CATEGORY;
 };
@@ -1183,7 +1187,12 @@ class GenericElement : public Element
 class StringResolver
 {
   public:
-    StringResolver() { }
+    /// Create a new string resolver.
+    static StringResolverPtr create()
+    {
+        return StringResolverPtr(new StringResolver());
+    }
+
     virtual ~StringResolver() { }
 
     /// @name File Prefix
@@ -1274,26 +1283,13 @@ class StringResolver
     /// @}
 
   protected:
+    StringResolver() { }
+
+  protected:
     string _filePrefix;
     string _geomPrefix;
     StringMap _filenameMap;
     StringMap _geomNameMap;
-};
-
-/// @class CopyOptions
-/// A set of options for controlling the behavior of element copy operations.
-class CopyOptions
-{
-  public:
-    CopyOptions() :
-        skipDuplicateElements(false)
-    {
-    }
-    ~CopyOptions() { }
-
-    /// If true, elements at the same scope with duplicate names will be skipped;
-    /// otherwise, they will trigger an exception.  Defaults to false.
-    bool skipDuplicateElements;
 };
 
 /// @class ExceptionOrphanedElement
@@ -1326,6 +1322,10 @@ template<class T> shared_ptr<T> Element::addChild(const string& name)
 /// return true if they have any targets in common.  An empty target string
 /// matches all targets.
 bool targetStringsMatch(const string& target1, const string& target2);
+
+/// Pretty print the given element tree, calling asString recursively on each
+/// element in depth-first order.
+string prettyPrint(ConstElementPtr elem);
 
 } // namespace MaterialX
 

@@ -32,12 +32,13 @@ void LightSamplerNodeGlsl::emitFunctionDefinition(const ShaderNode&, GenContext&
         shadergen.emitLine(SAMPLE_LIGHTS_FUNC_SIGNATURE, stage, false);
         shadergen.emitScopeBegin(stage);
         shadergen.emitLine("result.intensity = vec3(0.0)", stage);
+        shadergen.emitLine("result.direction = vec3(0.0)", stage);
 
         HwLightShadersPtr lightShaders = context.getUserData<HwLightShaders>(HW::USER_DATA_LIGHT_SHADERS);
         if (lightShaders)
         {
             string ifstatement = "if ";
-            for (auto it : lightShaders->get())
+            for (const auto& it : lightShaders->get())
             {
                 shadergen.emitLine(ifstatement + "(light.type == " + std::to_string(it.first) + ")", stage, false);
                 shadergen.emitScopeBegin(stage);
